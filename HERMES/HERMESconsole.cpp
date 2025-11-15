@@ -42,11 +42,22 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //            @@@ @@@                           @@             @@        STUDIOS    //
 //////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////
-// HERMESConsole
+// HERMESconsole.cpp - Debug Console Support (DISABLED)
 //////////////////////////////////////////////////////////////////////////////////////
 //
 // Description:
-//		HUM...hum...
+//		Stub file for debug console functionality.
+//		All functionality has been removed/disabled - file contains only includes.
+//
+// Purpose:
+//		Originally intended for in-game debugging console for HERMES commands.
+//		Would have allowed runtime querying of PAK files, resource stats, etc.
+//		No longer used in current implementation.
+//
+// Notes:
+//		- File is effectively empty (whitespace only after includes)
+//		- Kept for historical/structural purposes
+//		- No active code or functions
 //
 // Updates: (date) (person) (update)
 //
@@ -60,6 +71,8 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #define _CRTDBG_MAP_ALLOC
 #include <crtdbg.h>
+
+// [FILE CONTENTS REMOVED - DEBUG CONSOLE NOT IMPLEMENTED]
 
  
  
