@@ -25,45 +25,120 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "Athena_Global.h"
 #include "Athena_Stream.h"
 #include "Athena_Stream_WAV.h"
-//#include "Athena_Stream_ASF.h"
+//#include "Athena_Stream_ASF.h"		// ASF (Advanced Streaming Format) support commented out
 #include "Athena_FileIO.h"
 
 #define _CRTDBG_MAP_ALLOC
 #include <crtdbg.h>
 
+//////////////////////////////////////////////////////////////////////////////////////
+// Athena_Stream.cpp - Audio Stream Factory Functions
+//////////////////////////////////////////////////////////////////////////////////////
+//
+// Description:
+//		Factory functions for creating and destroying audio stream objects
+//		Provides abstraction layer for different streaming audio formats
+//
+// Purpose:
+//		- Create audio stream objects from files
+//		- Auto-detect format and instantiate appropriate stream class
+//		- Manage stream lifecycle (creation/deletion)
+//
+// Supported Formats:
+//		- WAV (StreamWAV) - Primary format, always enabled
+//		- ASF (StreamASF) - Commented out, not used in final game
+//
+// Stream Classes:
+//		Stream - Abstract base class
+//		StreamWAV - WAV file streaming implementation
+//		StreamASF - ASF file streaming (disabled)
+//
+// Code: Arkane Studios
+//
+// Copyright (c) 1999-2010 ARKANE Studios SA. All rights reserved
+//////////////////////////////////////////////////////////////////////////////////////
+
 namespace ATHENA
 {
 
+	//=============================================================================
+	// CreateStream - Create Audio Stream Object from File
+	//=============================================================================
+	// Description:
+	//		Opens audio file and creates appropriate stream object
+	//		Currently only WAV format supported (StreamWAV)
+	//
+	// Parameters:
+	//		name: Audio filename
+	//
+	// Returns:
+	//		Stream object pointer on success
+	//		NULL if file not found or stream creation failed
+	//
+	// Algorithm:
+	//		1. Open file using multi-path search (OpenResource)
+	//		2. Create StreamWAV object
+	//		3. Initialize stream with file handle (SetStream)
+	//		4. Return stream if successful, cleanup on failure
+	//
+	// Notes:
+	//		Currently hardcoded to WAV format
+	//		Could be extended to auto-detect format from file header
+	//
+	//=============================================================================
 	Stream * CreateStream(const char * name)
 	{
 		FILE * file;
 		Stream * stream = NULL;
 
-		file = OpenResource(name, sample_path);
+		file = OpenResource(name, sample_path);		// Search multiple paths
 
-		if (!file) return NULL;
+		if (!file) return NULL;						// File not found
 
-		FileSeek(file, 0, SEEK_SET);
-		stream = new StreamWAV;
+		FileSeek(file, 0, SEEK_SET);				// Rewind to start
+		stream = new StreamWAV;						// Create WAV stream object
 
-		if (stream->SetStream(file)) delete stream;
-		else return stream;
+		if (stream->SetStream(file)) delete stream;	// Init failed? Delete stream
+		else return stream;							// Success - return stream
 
-		FileClose(file);
+		FileClose(file);							// Close file (only if failed)
 
 		return NULL;
 	}
 
+	//=============================================================================
+	// DeleteStream - Destroy Audio Stream Object
+	//=============================================================================
+	// Description:
+	//		Properly releases stream resources and closes file
+	//
+	// Parameters:
+	//		stream: Reference to stream pointer (set to NULL on return)
+	//
+	// Returns:
+	//		AAL_OK on success
+	//
+	// Algorithm:
+	//		1. Get file handle from stream
+	//		2. Close file
+	//		3. Delete stream object
+	//		4. NULL out pointer (prevents dangling reference)
+	//
+	//=============================================================================
 	aalError DeleteStream(Stream *&stream)
 	{
 		FILE * file;
 
-		stream->GetStream(file);
-		FileClose(file);
-		delete stream;
-		stream = NULL;
+		stream->GetStream(file);		// Get underlying file handle
+		FileClose(file);				// Close file
+		delete stream;					// Delete stream object
+		stream = NULL;					// NULL out caller's pointer
 
 		return AAL_OK;
 	}
 
 }//ATHENA::
+
+//=============================================================================
+// END OF FILE
+//=============================================================================
