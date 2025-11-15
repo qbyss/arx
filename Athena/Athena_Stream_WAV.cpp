@@ -24,22 +24,110 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 */
 #include "Athena_Stream_WAV.h"
 #include <windows.h>
-#include <mmreg.h>
+#include <mmreg.h>		// Windows multimedia format definitions
 #include "Athena_Codec_RAW.h"
 #include "Athena_Codec_ADPCM.h"
 #include "Athena_FileIO.h"
 
+//////////////////////////////////////////////////////////////////////////////////////
+// Athena_Stream_WAV.cpp - WAV Audio File Streaming
+//////////////////////////////////////////////////////////////////////////////////////
+//
+// Description:
+//		WAV (Waveform Audio File Format) streaming implementation
+//		Primary audio format for Arx Fatalis music and ambient sounds
+//		Supports both uncompressed PCM and ADPCM compression
+//
+// Purpose:
+//		- Stream audio from WAV files for music and ambiances
+//		- Parse RIFF/WAV file structure
+//		- Support multiple audio codecs (PCM, ADPCM)
+//		- Enable long audio playback without loading entire file
+//
+// WAV File Format (RIFF Structure):
+//		WAV files use Microsoft RIFF (Resource Interchange File Format)
+//		Chunk-based structure with nested chunks:
+//
+//		[RIFF Chunk] - Overall container
+//			ChunkID: 'RIFF' (4 bytes)
+//			ChunkSize: File size - 8 bytes (4 bytes)
+//			Format: 'WAVE' (4 bytes)
+//
+//			[fmt  Chunk] - Format information
+//				ChunkID: 'fmt ' (4 bytes, note space)
+//				ChunkSize: 16 or more (4 bytes)
+//				wFormatTag: Audio format (1=PCM, 2=ADPCM, etc.)
+//				nChannels: Channel count (1=mono, 2=stereo)
+//				nSamplesPerSec: Sample rate (44100, etc.)
+//				nAvgBytesPerSec: Bytes per second
+//				nBlockAlign: Block alignment
+//				wBitsPerSample: Bits per sample (8, 16, etc.)
+//				[Extra format bytes for compressed formats]
+//
+//			[fact Chunk] - Sample count (compressed formats only)
+//				ChunkID: 'fact' (4 bytes)
+//				ChunkSize: 4 (4 bytes)
+//				SampleCount: Number of decompressed samples
+//
+//			[data Chunk] - Audio data
+//				ChunkID: 'data' (4 bytes)
+//				ChunkSize: Data size in bytes (4 bytes)
+//				[Audio data bytes...]
+//
+// Supported Codecs:
+//		WAVE_FORMAT_PCM (1): Uncompressed PCM - CodecRAW
+//		WAVE_FORMAT_ADPCM (2): MS ADPCM compression - CodecADPCM
+//
+// Design Pattern:
+//		Strategy Pattern - codec selected based on WAV format tag
+//		Adapter Pattern - ChunkFile wraps FILE* for chunk parsing
+//
+// Code: Arkane Studios
+//
+// Copyright (c) 1999-2010 ARKANE Studios SA. All rights reserved
+//////////////////////////////////////////////////////////////////////////////////////
+
 namespace ATHENA
 {
 
+//=============================================================================
+// Format Casting Macros
+//=============================================================================
+// Description:
+//		Type-safe casts for WAV format structures
+//		WAVEFORMATEX used for all formats, extended for ADPCM
+//
+// AS_FORMAT_PCM: Cast to WAVEFORMATEX (basic PCM format)
+// AS_FORMAT_ADPCM: Cast to ADPCMWAVEFORMAT (extended for ADPCM)
+//
+//=============================================================================
 #define AS_FORMAT_PCM(x) ((WAVEFORMATEX *)x)
 #define AS_FORMAT_ADPCM(x) ((ADPCMWAVEFORMAT *)x)
 
-	///////////////////////////////////////////////////////////////////////////////
-	//                                                                           //
-	// Class ChunkFile                                                           //
-	//                                                                           //
-	///////////////////////////////////////////////////////////////////////////////
+	//=============================================================================
+	// ChunkFile - RIFF Chunk Parser Helper Class
+	//=============================================================================
+	// Description:
+	//		Helper class for parsing RIFF chunks in WAV files
+	//		Provides sequential chunk navigation and reading
+	//
+	// Purpose:
+	//		- Find specific chunks by ID ('fmt ', 'data', etc.)
+	//		- Read chunk data with automatic offset tracking
+	//		- Skip unwanted chunks
+	//		- Validate chunk IDs
+	//
+	// RIFF Chunk Structure:
+	//		Every chunk has: [4-byte ID] [4-byte size] [size bytes of data]
+	//		Example: 'fmt ' [16] [16 bytes of format data]
+	//
+	// Usage Pattern:
+	//		ChunkFile wave(file);
+	//		wave.Check("RIFF");      // Verify RIFF signature
+	//		wave.Find("fmt ");       // Find format chunk
+	//		wave.Read(&format, 16);  // Read format data
+	//
+	//=============================================================================
 	class ChunkFile
 	{
 		public:
@@ -47,19 +135,19 @@ namespace ATHENA
 			ChunkFile(FILE * file);
 			~ChunkFile();
 			//I/O
-			aalSBool Read(aalVoid *, const aalULong &);
-			aalSBool Skip(const aalULong &);
-			aalSBool Find(const char *);
-			aalSBool Check(const char *);
-			aalULong Size()
+			aalSBool Read(aalVoid *, const aalULong &);	// Read bytes from current chunk
+			aalSBool Skip(const aalULong &);			// Skip N bytes
+			aalSBool Find(const char *);				// Find chunk by ID
+			aalSBool Check(const char *);				// Verify chunk ID at current position
+			aalULong Size()								// Get current chunk size
 			{
 				return offset;
 			};
-			aalSBool Restart();
+			aalSBool Restart();							// Seek back to file start
 		private:
 			//Data
-			FILE * file;
-			aalULong offset;
+			FILE * file;			// File stream being parsed
+			aalULong offset;		// Current chunk data size
 	};
 
 	///////////////////////////////////////////////////////////////////////////////
