@@ -584,6 +584,44 @@ namespace ATHENA
 	// File input/output                                                         //
 	//                                                                           //
 	///////////////////////////////////////////////////////////////////////////////
+
+	//=============================================================================
+	// Load - Load Ambiance from File
+	//=============================================================================
+	// Description:
+	//		Loads multi-track ambiance definition from file
+	//		Ambiance files contain multiple tracks with keyframe data
+	//
+	// Parameters:
+	//		_name: Ambiance filename (e.g., "forest.amb")
+	//
+	// Returns:
+	//		AAL_OK: Successfully loaded
+	//		AAL_ERROR_FILEIO: File not found or read error
+	//		AAL_ERROR_FORMAT: Invalid file signature or version
+	//		AAL_ERROR_MEMORY: Failed to allocate track structures
+	//
+	// File Format:
+	//		[4 bytes] Signature (AMBIANCE_FILE_SIGNATURE)
+	//		[4 bytes] Version (1000, 1001, 1002, 1003)
+	//		[4 bytes] Track count
+	//		[Variable] Track data (format varies by version)
+	//
+	// Algorithm:
+	//		1. Free existing tracks if any (supports reload)
+	//		2. Open ambiance file using resource path search
+	//		3. Read and verify file signature/version
+	//		4. Read track count and allocate track array
+	//		5. Call version-specific loader (LoadAmbianceFileVersion_XXXX)
+	//		6. Close file and store ambiance name
+	//
+	// Supported Versions:
+	//		1000: Original format
+	//		1001: Added features (exact details in version loader)
+	//		1002: Enhanced format
+	//		1003: Latest format
+	//
+	//=============================================================================
 	aalError Ambiance::Load(const char * _name)
 	{
 		FILE * file = NULL;
@@ -889,7 +927,46 @@ namespace ATHENA
 	// Control                                                                   //
 	//                                                                           //
 	///////////////////////////////////////////////////////////////////////////////
-	
+
+	//=============================================================================
+	// Play - Start Ambiance Playback
+	//=============================================================================
+	// Description:
+	//		Starts playing ambiance with all its tracks
+	//		Supports optional fade-in and loop control
+	//
+	// Parameters:
+	//		_channel: Playback channel (mixer, volume, flags)
+	//		play_count: Number of times to play (0 = infinite loop)
+	//		_fade_interval: Fade-in duration in milliseconds (0 = no fade)
+	//
+	// Returns:
+	//		AAL_OK: Successfully started playback
+	//
+	// Algorithm:
+	//		1. Stop if already playing
+	//		2. Set looping flag based on play_count
+	//		3. Setup fade-in if fade_interval specified:
+	//		   - Start with volume 0
+	//		   - Gradually increase to target volume over fade_interval
+	//		4. For each track:
+	//		   - Register start/stop callbacks on sample
+	//		   - Initialize track keys (reset delays and sync)
+	//		5. Set playing flag and store start time
+	//
+	// Fade-In:
+	//		If fade_interval > 0:
+	//		- Volume starts at 0.0
+	//		- Fades up to channel.volume over fade_interval milliseconds
+	//		- IS_FADED_UP flag set (processed in Update())
+	//
+	// Implementation Notes:
+	//		- All tracks start simultaneously
+	//		- Each track manages its own key playback timing
+	//		- Callbacks (OnAmbianceSampleStart/Stop) trigger track keys
+	//		- Looping ambiances play indefinitely until stopped
+	//
+	//=============================================================================
 	aalError Ambiance::Play(const aalChannel & _channel, const aalULong & play_count, const aalULong & _fade_interval)
 	{
 		channel = _channel;
@@ -973,23 +1050,62 @@ namespace ATHENA
 		return AAL_OK;
 	}
 
+	//=============================================================================
+	// Stop - Stop Ambiance Playback
+	//=============================================================================
+	// Description:
+	//		Stops ambiance playback for all tracks
+	//		Supports optional fade-out
+	//
+	// Parameters:
+	//		_fade_interval: Fade-out duration in milliseconds (0 = instant stop)
+	//
+	// Returns:
+	//		AAL_OK: Successfully stopped or initiated fade-out
+	//
+	// Algorithm:
+	//		1. If not playing: return immediately
+	//		2. If paused: resume first (to allow fade-out to work)
+	//		3. If fade_interval specified:
+	//		   - Set IS_FADED_DOWN flag
+	//		   - Volume will fade to 0 over interval in Update()
+	//		   - Return (actual stop happens when fade completes)
+	//		4. If instant stop (fade_interval = 0):
+	//		   - Clear IS_PLAYING flag
+	//		   - Stop all track instances
+	//
+	// Fade-Out:
+	//		If fade_interval > 0:
+	//		- Volume fades from current to 0.0 over fade_interval ms
+	//		- IS_FADED_DOWN flag set (processed in Update())
+	//		- Stop occurs automatically when fade completes
+	//
+	// Implementation Notes:
+	//		- Stops all playing instances from all tracks
+	//		- If paused, resume before fading (paused sounds can't fade)
+	//		- Fade-out is gradual, instant stop is immediate
+	//
+	//=============================================================================
 	aalError Ambiance::Stop(const aalULong & _fade_interval)
 	{
 		if (!(flags & IS_PLAYING)) return AAL_OK;
 
+		// Resume if paused (can't fade while paused)
 		if (flags & IS_PAUSED) Resume();
 		else
 		{
 			fade_interval = (aalFloat)_fade_interval;
 
+			// Setup fade-out if requested
 			if (fade_interval)
 			{
 				flags |= IS_FADED_DOWN, flags &= ~IS_FADED_UP;
 				fade_time = 0;
-				return AAL_OK;
+				return AAL_OK;		// Fade will complete in Update()
 			}
 		}
 
+		// Instant stop
 		flags &= ~IS_PLAYING;
 		time = 0;
 
@@ -1081,15 +1197,56 @@ namespace ATHENA
 		return AAL_OK;
 	}
 
+	//=============================================================================
+	// Update - Per-Frame Ambiance Update
+	//=============================================================================
+	// Description:
+	//		Main update function called each frame for active ambiances
+	//		Handles fading, track playback timing, and track updates
+	//
+	// Returns:
+	//		AAL_OK: Update successful
+	//
+	// Algorithm:
+	//		1. Skip if not playing
+	//		2. Calculate time elapsed since last frame (interval)
+	//		3. Update fade if fading:
+	//		   - Fade-up: Increase volume from 0 to target
+	//		   - Fade-down: Decrease volume to 0, then stop
+	//		4. Update each track:
+	//		   - Check if track instance still valid
+	//		   - Update track's internal state
+	//		   - Handle track-specific timing and parameters
+	//
+	// Fading System:
+	//		IS_FADED_UP (fade-in):
+	//			- Volume: 0.0 → fade_max (linear interpolation)
+	//			- Duration: fade_interval milliseconds
+	//			- Completes when volume reaches fade_max
+	//
+	//		IS_FADED_DOWN (fade-out):
+	//			- Volume: fade_max → 0.0 (linear interpolation)
+	//			- Duration: fade_interval milliseconds
+	//			- Calls Stop() automatically when volume reaches 0
+	//
+	// Implementation Notes:
+	//		- Called every frame by AAL_Update() for all active ambiances
+	//		- time: Total playback time since Play() was called
+	//		- interval: Time delta since last Update()
+	//		- Each track manages its own keyframe playback independently
+	//		- Volume conversion: LinearToLogVolume() for proper attenuation curve
+	//
+	//=============================================================================
 	aalError Ambiance::Update()
 	{
 		aalULong interval;
 
 		if (!(flags & IS_PLAYING)) return AAL_OK;
 
+		// Calculate time delta since last update
 		time += interval = session_time - start - time;
 
-		//Fading
+		// Process fade-in or fade-out
 		if (fade_interval)
 		{
 			fade_time += interval;
