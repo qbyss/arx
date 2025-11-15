@@ -42,13 +42,33 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //            @@@ @@@                           @@             @@        STUDIOS    //
 //////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////
-// EERIEFrame
+// EERIEFrame - Frame Timing and Update Management
 //////////////////////////////////////////////////////////////////////////////////////
 //
 // Description:
-//		EERIE Framework funcs
+//		Frame rate management and timing system for EERIE engine
+//		Handles frame timing, FPS calculation, and timestep control
+//		Ensures consistent game speed across different hardware
 //
-// Updates: (date) (person) (update)
+// Purpose:
+//		- Calculate frame delta time (time since last frame)
+//		- Measure and display FPS (frames per second)
+//		- Cap frame rate to prevent excessive CPU usage
+//		- Provide consistent timestep for physics/animation
+//		- Handle frame skipping for slow hardware
+//
+// Timing System:
+//		Frame Delta: Time elapsed since previous frame (milliseconds)
+//		FPS Counter: Frames rendered per second
+//		Target FPS: Desired frame rate (60 FPS typical)
+//		Timestep: Fixed time interval for physics updates
+//		Frame Limiter: Cap FPS to prevent overheating
+//
+// Use Cases:
+//		- Animation timing (frame-rate independent)
+//		- Physics simulation (fixed timestep)
+//		- FPS display (debugging performance)
+//		- Frame rate limiting (reduce CPU load)
 //
 // Code: Cyril Meynier
 //

@@ -42,12 +42,43 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //            @@@ @@@                           @@             @@        STUDIOS    //
 //////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////
-// EERIEUtil
+// EERIEUtil - Utility Functions and Helpers
 //////////////////////////////////////////////////////////////////////////////////////
 //
 // Description:
+//		Collection of utility functions for EERIE 3D engine
+//		Provides helper macros, debugging tools, and common operations
+//		Shortcuts for DirectX operations and math calculations
 //
-// Updates: (date) (person) (update)
+// Purpose:
+//		- DirectX helper macros (SAFE_RELEASE, etc.)
+//		- Math utilities (clamping, interpolation)
+//		- Debugging helpers (assertions, logging)
+//		- Common operations (memory allocation, file I/O)
+//		- Performance profiling utilities
+//
+// Utility Categories:
+//		DirectX Helpers:
+//		- SAFE_RELEASE: Safely release COM objects
+//		- SAFE_DELETE: Safely delete pointers
+//		- Buffer management shortcuts
+//
+//		Math Utilities:
+//		- Clamp values to ranges
+//		- Linear interpolation (lerp)
+//		- Fast approximations (sqrt, sin/cos)
+//		- Random number generation
+//
+//		Memory Management:
+//		- Safe allocation wrappers
+//		- Memory leak detection
+//		- Buffer management
+//
+//		Debugging:
+//		- Assert macros
+//		- Debug logging
+//		- Performance counters
+//		- Error reporting
 //
 // Code: Cyril Meynier
 //

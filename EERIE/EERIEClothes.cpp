@@ -42,13 +42,54 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //            @@@ @@@                           @@             @@        STUDIOS    //
 //////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////
-// EERIEClothes.cpp
+// EERIEClothes - Character Equipment and Clothing System
 //////////////////////////////////////////////////////////////////////////////////////
 //
 // Description:
-//		Adds Clothes Data to a Mesh
+//		Dynamic character customization through layered equipment meshes
+//		Allows swapping armor, helmets, weapons to change character appearance
+//		Merges clothing meshes with base character mesh at runtime
 //
-// Updates: (date) (person) (update)
+// Purpose:
+//		- Equip/unequip armor, helmets, boots on characters
+//		- Merge clothing meshes with character skeleton
+//		- Hide base mesh polygons covered by equipment
+//		- Update textures for equipped items
+//		- Character customization (player, NPCs)
+//
+// Clothing System:
+//		Base Character: Naked character mesh with skeleton
+//		Clothing Slots: Helmet, Chest, Legs, Boots, etc.
+//		Clothing Meshes: Separate 3D models for each equipment piece
+//		Vertex Selection: Which base vertices to hide when clothed
+//		Texture Replacement: Swap textures for equipped items
+//
+// How It Works:
+//		1. Load base character mesh (nude model)
+//		2. Load clothing meshes (armor pieces)
+//		3. Attach clothing to skeleton bones
+//		4. Hide overlapping base mesh polygons
+//		5. Render character with layered equipment
+//
+// Polygon Hiding:
+//		Armor defines which base polygons to hide
+//		Example: Chest armor hides torso polygons
+//		Prevents z-fighting (overlapping geometry)
+//		Optimizes rendering (skip hidden faces)
+//
+// Equipment Slots:
+//		- Helmet: Head armor, masks
+//		- Chest: Torso armor, shirts
+//		- Leggings: Leg armor, pants
+//		- Boots: Foot armor, shoes
+//		- Gloves: Hand armor
+//		- Weapon: Sword, bow (attached to hand bone)
+//
+// Use Cases:
+//		- Player equips armor (visual feedback)
+//		- NPC guards wear uniforms
+//		- Enemy variety (same goblin, different gear)
+//		- Loot system (pickup helmet, see it equipped)
 //
 // Code: Cyril Meynier
 //

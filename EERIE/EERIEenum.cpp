@@ -42,14 +42,34 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //            @@@ @@@                           @@             @@        STUDIOS    //
 //////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////
-// EERIEEnum
+// EERIEEnum - Device and Mode Enumeration
 //////////////////////////////////////////////////////////////////////////////////////
 //
 // Description:
-//		Functions to enumerate DDraw/D3D drivers, devices, and modes.
+//		DirectX device and display mode enumeration system
+//		Lists available 3D devices, video modes, and hardware capabilities
+//		Used for graphics settings and device selection
 //
-// Updates: (date) (person) (update)
+// Purpose:
+//		- Enumerate DirectDraw drivers (graphics cards)
+//		- List available Direct3D devices (HAL, REF, T&L)
+//		- Enumerate display modes (resolutions, bit depths)
+//		- Detect hardware capabilities (bump mapping, T&L, etc.)
+//		- Build graphics settings UI
 //
+// Enumeration Process:
+//		1. Enumerate DirectDraw drivers (graphics cards)
+//		2. For each driver, enumerate D3D devices
+//		3. For each device, enumerate display modes
+//		4. Query device capabilities (T&L, textures, etc.)
+//		5. Present options to user for selection
+//
+// Device Types:
+//		- HAL (Hardware): GPU-accelerated (preferred)
+//		- REF (Reference): Software rasterizer (slow, accurate)
+//		- T&L: Hardware transform & lighting
+//
+// Code: Arkane Studios
 //
 // Copyright (c) 1999 ARKANE Studios SA. All rights reserved
 //////////////////////////////////////////////////////////////////////////////////////

@@ -42,13 +42,25 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //            @@@ @@@                           @@             @@        STUDIOS    //
 //////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////
-// EERIEProgressive.cpp
+// EERIEProgressive - Progressive Mesh LOD System
 //////////////////////////////////////////////////////////////////////////////////////
 //
 // Description:
-//		Adds Progressive Data to a Mesh
+//		Level-of-detail system using progressive meshes
+//		Dynamic polygon reduction based on distance from camera
+//		Smooth transitions between LOD levels for performance
 //
-// Updates: (date) (person) (update)
+// Purpose:
+//		- Generate LOD levels from high-poly mesh
+//		- Dynamic polygon count based on distance
+//		- Smooth LOD transitions (no popping)
+//		- Significant performance gains for distant objects
+//
+// Progressive Mesh Algorithm:
+//		- Edge collapse: Merge vertices to reduce triangles
+//		- Record collapse sequence for reversibility
+//		- Runtime: Collapse/split edges based on distance
+//		- Maintain visual quality at all LOD levels
 //
 // Code: Cyril Meynier
 //

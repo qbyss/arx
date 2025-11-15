@@ -42,13 +42,26 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //            @@@ @@@                           @@             @@        STUDIOS    //
 //////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////
-// EERIEMeshTweak
+// EERIEMeshTweak - Mesh Modification and Optimization
 //////////////////////////////////////////////////////////////////////////////////////
 //
 // Description:
-//		DynMeshTweaking
+//		Mesh optimization and modification system for 3D objects
+//		Runtime mesh adjustments, vertex welding, normal smoothing
+//		Dynamic mesh tweaking for performance and visual quality
 //
-// Updates: (date) (person) (update)
+// Purpose:
+//		- Vertex welding (merge duplicate vertices)
+//		- Normal smoothing (better lighting)
+//		- Mesh simplification (reduce polygon count)
+//		- UV coordinate adjustment
+//		- Dynamic mesh deformation
+//
+// Optimization Techniques:
+//		- Weld vertices with same position
+//		- Recalculate normals for smooth shading
+//		- Remove degenerate triangles
+//		- Optimize vertex cache coherence
 //
 // Code: Cyril Meynier
 //
