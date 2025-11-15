@@ -41,12 +41,56 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //@@@    @@@  @@@ @@@@@                          @@            @@@                  //
 //            @@@ @@@                           @@             @@        STUDIOS    //
 //////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
+// EERIELight - Dynamic Lighting System
+//////////////////////////////////////////////////////////////////////////////////////
 //
-// EERIELight
+// Description:
+//		Dynamic point light system for real-time lighting in EERIE engine
+//		Handles torches, magic spells, explosions, and environmental lights
+//		Calculates per-vertex lighting with distance attenuation
+//
+// Purpose:
+//		- Create and manage dynamic point lights
+//		- Calculate lighting contributions for polygons/vertices
+//		- Animated lights (flickering torches, pulsing magic)
+//		- Colored lighting (fire = orange, magic = blue/purple)
+//		- Shadow casting (optional, performance-intensive)
+//		- Light culling (only process nearby lights)
+//
+// Lighting Model:
+//		Point Lights: Omnidirectional light sources with position
+//		Attenuation: Intensity decreases with distance (inverse square law)
+//		Color: RGB tint for each light source
+//		Intensity: Brightness multiplier
+//		Radius: Maximum distance light affects
+//
+// Light Types:
+//		Static: Level lights (wall torches, candles)
+//		Dynamic: Moving lights (carried torch, spell projectile)
+//		Flickering: Animated intensity (fire, candle flame)
+//		Pulsing: Rhythmic variation (magic aura, heartbeat)
+//		One-shot: Temporary (explosion, lightning)
+//
+// Performance Optimizations:
+//		- Spatial culling: Only light nearby polygons
+//		- Distance culling: Skip lights beyond max radius
+//		- Light limit: Cap number of lights per polygon
+//		- Precalculation: Cache static light contributions
+//
+// Lighting Calculation:
+//		For each polygon vertex:
+//		1. Find all lights within radius
+//		2. Calculate distance to each light
+//		3. Compute intensity with attenuation: I = I0 / (1 + dÂ²)
+//		4. Apply light color and normal dot product
+//		5. Sum all light contributions
+//		6. Clamp to valid color range (0-255)
+//
+// Code: Cyril Meynier
 //
 // Copyright (c) 1999-2000 ARKANE Studios SA. All rights reserved
-///////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
 
 #include "EERIELight.h"
 #include "EERIEMath.h"
@@ -611,7 +655,7 @@ void TreatBackgroundDynlights()
 
 			if (GLight[i]->status == 0)
 			{
-				// vient de s'éteindre
+				// vient de s'ï¿½teindre
 				if (GLight[i]->tl > 0)
 				{
 					DynLight[GLight[i]->tl].exist = 0;

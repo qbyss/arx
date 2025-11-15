@@ -42,17 +42,51 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //            @@@ @@@                           @@             @@        STUDIOS    //
 //////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////
-// EERIETexture.cpp
+// EERIETexture - Texture Management System
 //////////////////////////////////////////////////////////////////////////////////////
 //
 // Description:
-//		Texture Management Functions: Create, Restore Lost Surfaces, Invalidate
-//      Surfaces, Destroy Surfaces.
+//		Complete texture management system for EERIE 3D engine
+//		Handles loading, caching, DirectX surface management, and format conversion
+//		Supports BMP, JPEG, PNG, TGA texture formats
+//
+// Purpose:
+//		- Load textures from disk (BMP, JPG, PNG, TGA)
+//		- Create DirectX surfaces and upload to video memory
+//		- Texture caching and resource management
+//		- Restore lost surfaces after device reset
+//		- Mipmap generation for smooth texture filtering
+//		- Colorkey transparency support
+//
+// Key Components:
+//		TextureContainer: Main texture object with DirectX surface
+//		Texture Cache: Prevents duplicate texture loads
+//		Format Conversion: Converts images to DirectX compatible formats
+//		Surface Management: Handles video memory allocation
+//		Restore System: Recovers textures after device loss
+//
+// Supported Formats:
+//		- BMP: Windows Bitmap (uncompressed)
+//		- JPG: JPEG compressed images (lossy)
+//		- PNG: PNG compressed images (lossless, transparency)
+//		- TGA: Targa images (uncompressed, alpha channel)
+//
+// DirectX Integration:
+//		- Creates IDirectDrawSurface7 textures
+//		- Manages video memory vs system memory
+//		- Handles texture restoration on mode changes
+//		- Supports hardware mipmapping
+//
+// Performance Optimizations:
+//		- Texture cache prevents redundant loads
+//		- Lazy loading (load on first use)
+//		- Mipmap generation for distant objects
+//		- Power-of-2 texture size requirements
 //
 // Updates: (date) (person) (update)
 //
 // Code:	Cyril Meynier
-//			Sébastien Scieux	(JPEG & PNG)
+//			SÃ©bastien Scieux	(JPEG & PNG)
 //
 // Copyright (c) 1999 ARKANE Studios SA. All rights reserved
 //////////////////////////////////////////////////////////////////////////////////////
@@ -3073,7 +3107,7 @@ HRESULT TextureContainer::CopyJPEGDataToSurface(LPDIRECTDRAWSURFACE7 Surface)
 	struct	jpeg_decompress_struct	* cinfo = (jpeg_decompress_struct *)m_pJPEGData;
 	long	dx, dy;
 
-	//initialisé d'abord le format output
+	//initialisï¿½ d'abord le format output
 	cinfo->out_color_space = JCS_RGB;
 	cinfo->output_components = 3;
 	jpeg_start_decompress(cinfo);
@@ -3662,7 +3696,7 @@ HRESULT D3DTextr_InvalidateAllTextures()
 //-----------------------------------------------------------------------------
 
 /*
-	Detruit une surface chargée
+	Detruit une surface chargï¿½e
 	seb
 */
 void D3DTextr_KillTexture(TextureContainer * tex)
@@ -3672,7 +3706,7 @@ void D3DTextr_KillTexture(TextureContainer * tex)
 }
 
 /*
-	Detruit toutes les surfaces chargées
+	Detruit toutes les surfaces chargï¿½es
 */
 void D3DTextr_KillAllTextures()
 {
@@ -3811,11 +3845,11 @@ int	Read_PNG_Signature(void)
 }
 /*-----------------------------------------------------------------------------*/
 /*
-	un chunk est composé de:
+	un chunk est composï¿½ de:
 	4 byte:taille datas
 	4 byte:type
 	des datas
-	4 byte:CRC(a testé peut etre)
+	4 byte:CRC(a testï¿½ peut etre)
 
 	<< Datas PNG en memoire.
 	>> Type du chunk, taille du chunk, et son CRC

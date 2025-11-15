@@ -42,11 +42,47 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //            @@@ @@@                           @@             @@        STUDIOS    //
 //////////////////////////////////////////////////////////////////////////////////////                                                                                     
 //////////////////////////////////////////////////////////////////////////////////////
-// EERIEAnim
+// EERIEAnim - Skeletal Animation System
 //////////////////////////////////////////////////////////////////////////////////////
 //
 // Description:
-//		Animation funcs
+//		Skeletal animation system for character and object animation
+//		Handles keyframe interpolation, bone hierarchies, and animation blending
+//		Supports TEA (The EERIE Animation) file format
+//
+// Purpose:
+//		- Load and manage skeletal animations from TEA files
+//		- Keyframe interpolation (linear, spherical for rotations)
+//		- Bone hierarchy transformation (parent-child relationships)
+//		- Animation blending and transitions
+//		- Attachment points for weapons, items, particles
+//		- Inverse kinematics for feet placement
+//
+// Key Components:
+//		EERIE_ANIM: Animation container with groups and keyframes
+//		EERIE_GROUP: Bone/joint transformation group
+//		Keyframe: Single frame pose (rotation, translation, scale)
+//		Animation Layers: Multiple animations playing simultaneously
+//		Skeleton: Bone hierarchy for character mesh
+//
+// Animation System:
+//		Keyframe-based: Store poses at specific times, interpolate between
+//		Hierarchical: Bones have parent-child relationships
+//		Channels: Separate position, rotation, scale channels
+//		Blending: Smooth transitions between animations
+//		Looping: Cyclic animations (walk, idle, etc.)
+//
+// Interpolation Methods:
+//		Linear: Straight line between keyframes (positions)
+//		Spherical (SLERP): Smooth rotation interpolation (quaternions)
+//		Bezier: Smooth curves for complex motion (optional)
+//
+// Use Cases:
+//		- Character walk/run cycles
+//		- Combat animations (attack, block, dodge)
+//		- Facial animations
+//		- Item pickup and manipulation
+//		- Death and ragdoll transitions
 //
 // Updates: (date) (person) (update)
 //
