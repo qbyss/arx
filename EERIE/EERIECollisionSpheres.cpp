@@ -42,13 +42,61 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //            @@@ @@@                           @@             @@        STUDIOS    //
 //////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////
-// EERIECollisionSpheres
+// EERIECollisionSpheres - Sphere-Based Collision Detection
 //////////////////////////////////////////////////////////////////////////////////////
 //
 // Description:
-//		CollisionSpheres creation/handling
+//		Bounding sphere collision system for fast, approximate collision detection
+//		Hierarchical sphere trees for complex mesh approximation
+//		Used for character collision, hit detection, and broad-phase culling
 //
-// Updates: (date) (person) (update)
+// Purpose:
+//		- Create collision sphere hierarchies for 3D meshes
+//		- Fast sphere-sphere collision tests (distance check)
+//		- Hierarchical collision (test parent sphere first)
+//		- Hit detection for combat (sword vs character)
+//		- Broad-phase culling (eliminate distant objects quickly)
+//
+// Collision Sphere System:
+//		Bounding Sphere: Center point + radius
+//		Sphere Hierarchy: Parent sphere contains child spheres
+//		Collision Test: Distance between centers < sum of radii
+//		Hit Points: Specific sphere for body parts (head, torso, limbs)
+//
+// Sphere Representation:
+//		Center: 3D position in world or object space
+//		Radius: Distance from center to sphere surface
+//		Parent/Child: Hierarchical structure for complex shapes
+//
+// Collision Detection:
+//		Sphere-Sphere Test:
+//			dist = distance(center1, center2)
+//			collision = (dist < radius1 + radius2)
+//		Fast: Only requires distance calculation (no complex math)
+//		Conservative: May report false positives (sphere overestimates shape)
+//
+// Hierarchical Testing:
+//		1. Test parent sphere (full body bounding sphere)
+//		2. If parent collides, test child spheres (body parts)
+//		3. Recurse down hierarchy for precise hit location
+//		Benefits: Early rejection saves many tests
+//
+// Use Cases:
+//		- Character collision (player vs environment)
+//		- Combat hit detection (weapon vs enemy)
+//		- Projectile collision (arrow vs target)
+//		- Broad-phase culling (eliminate distant objects)
+//		- Trigger volumes (proximity detection)
+//
+// Advantages:
+//		- Very fast (simple distance check)
+//		- Rotation invariant (sphere looks same from all angles)
+//		- Good for characters (roughly cylindrical shapes)
+//
+// Disadvantages:
+//		- Conservative (overestimates collision volume)
+//		- Poor for flat/elongated shapes (walls, swords)
+//		- False positives require secondary tests
 //
 // Code: Cyril Meynier
 //

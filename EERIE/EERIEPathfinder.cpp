@@ -41,19 +41,64 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //@@@    @@@  @@@ @@@@@                          @@            @@@                  //
 //            @@@ @@@                           @@             @@        STUDIOS    //
 //////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////
-// EERIEPathfinder
-///////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
+// EERIEPathfinder - EERIE to MINOS Pathfinding Bridge
+//////////////////////////////////////////////////////////////////////////////////////
 //
 // Description:
-//	Interface betweed EERIE & MINOS
+//		Interface layer between EERIE 3D engine and MINOS pathfinding system
+//		Converts EERIE world geometry to MINOS navigation mesh
+//		Manages pathfinding requests and path results
 //
-// Updates: (date) (person) (update)
+// Purpose:
+//		- Bridge EERIE and MINOS systems (different coordinate systems)
+//		- Convert level geometry to navigation mesh
+//		- Request paths for NPC movement (start → goal)
+//		- Smooth and optimize returned paths
+//		- Handle dynamic obstacles and path invalidation
+//
+// Integration:
+//		EERIE Side:
+//		- 3D world with polygons, rooms, anchors
+//		- Character positions in world coordinates
+//		- Collision geometry and walkable surfaces
+//
+//		MINOS Side:
+//		- 2D navigation grid or mesh
+//		- A* pathfinding algorithm
+//		- Waypoint-based paths
+//
+// Pathfinding Workflow:
+//		1. Initialize: Convert EERIE level to MINOS navigation data
+//		2. Request: NPC requests path (current position → target)
+//		3. Convert: Transform EERIE coords to MINOS space
+//		4. Find Path: MINOS calculates optimal waypoint path (A*)
+//		5. Convert Back: Transform MINOS waypoints to EERIE coords
+//		6. Smooth: Optimize path (remove unnecessary waypoints)
+//		7. Return: Provide path to game logic for NPC movement
+//
+// Data Conversion:
+//		EERIE → MINOS:
+//		- Level polygons → walkable regions
+//		- Rooms/portals → navigation zones
+//		- Anchors → navigation nodes
+//		- 3D positions → 2D grid coordinates
+//
+//		MINOS → EERIE:
+//		- Waypoint list → 3D path coordinates
+//		- Grid positions → world space positions
+//		- Add height (Y) for sloped terrain
+//
+// Use Cases:
+//		- NPC pathfinding (goblins chase player)
+//		- Companion following (dog follows player)
+//		- Patrol routes (guards walk predetermined paths)
+//		- Fleeing behavior (NPC escapes from danger)
 //
 // Code: Cyril Meynier
 //
 // Copyright (c) 1999-2001 ARKANE Studios SA. All rights reserved
-///////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
 #include "EERIEPathfinder.h"
 #include "EERIELight.h"
 
