@@ -32,19 +32,100 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #define _CRTDBG_MAP_ALLOC
 #include <crtdbg.h>
 
+//////////////////////////////////////////////////////////////////////////////////////
+// Athena_Ambiance.cpp - Ambient Sound Environment System
+//////////////////////////////////////////////////////////////////////////////////////
+//
+// Description:
+//		Ambient soundscape system for complex multi-track audio environments
+//		Ambiances contain multiple tracks with keyframe animation (see Track.cpp)
+//		Provides layered, evolving audio environments for game locations
+//
+// Purpose:
+//		- Create rich ambient soundscapes for game areas
+//		- Layer multiple audio tracks (wind, water, birds, etc.)
+//		- Animate track parameters over time (volume, pitch, position)
+//		- Support 3D spatialized ambiances
+//		- Enable smooth fading and crossfading between ambiances
+//		- Load/save ambiance configurations from files
+//
+// Ambiance System Hierarchy:
+//		Ambiance: Container for multiple tracks
+//		├── Track 1: Wind (volume animates, looping)
+//		├── Track 2: Birds (random chirps with delay variation)
+//		├── Track 3: Water (3D positioned at stream location)
+//		└── Track 4: Music (fades in/out based on player location)
+//
+// Track Composition:
+//		Each track contains multiple keys (keyframes) - see Athena_Track.cpp
+//		Keys define sound samples, timing, looping, and parameter animation
+//		Tracks can be master (always play) or conditional
+//		Tracks can be muted, paused, or faded independently
+//
+// Use Cases:
+//		Forest Ambiance:
+//		- Track 1: Wind rustling (continuous loop, volume varies)
+//		- Track 2: Bird chirps (random timing with delays)
+//		- Track 3: Distant stream (3D positioned)
+//		- Track 4: Crickets (only at night, conditional)
+//
+//		Dungeon Ambiance:
+//		- Track 1: Dripping water (echo, reverb)
+//		- Track 2: Distant growls (random intervals)
+//		- Track 3: Torch crackling (3D positioned at torches)
+//		- Track 4: Ominous music (fades in near boss)
+//
+// File Format:
+//		Ambiances loaded from binary .amb files
+//		'GAMB' signature (0x424d4147)
+//		Multiple versions supported (1.0.0.0 - 1.0.0.3)
+//		Contains all track data, keys, and animation parameters
+//
+// Fading:
+//		Smooth volume transitions for ambiance changes
+//		FADE_INTERVAL: 50ms update frequency
+//		Supports fade in, fade out, and crossfade
+//
+// Code: Arkane Studios
+//
+// Copyright (c) 1999-2010 ARKANE Studios SA. All rights reserved
+//////////////////////////////////////////////////////////////////////////////////////
+
 namespace ATHENA
 {
 
-	static const aalULong AMBIANCE_FILE_SIGNATURE(0x424d4147); //'GAMB'
-	static const aalULong AMBIANCE_FILE_VERSION_1000(0x01000000);
-	static const aalULong AMBIANCE_FILE_VERSION_1001(0x01000001);
-	static const aalULong AMBIANCE_FILE_VERSION_1002(0x01000002);
-	static const aalULong AMBIANCE_FILE_VERSION_1003(0x01000003);
+	//=============================================================================
+	// Ambiance File Format Constants
+	//=============================================================================
+	// GAMB: 'GAMB' signature (0x424d4147) - Identifies ambiance files
+	// Versions 1.0.0.0 through 1.0.0.3 supported (incremental features)
+	//=============================================================================
+	static const aalULong AMBIANCE_FILE_SIGNATURE(0x424d4147);		//'GAMB'
+	static const aalULong AMBIANCE_FILE_VERSION_1000(0x01000000);	// Version 1.0.0.0
+	static const aalULong AMBIANCE_FILE_VERSION_1001(0x01000001);	// Version 1.0.0.1
+	static const aalULong AMBIANCE_FILE_VERSION_1002(0x01000002);	// Version 1.0.0.2
+	static const aalULong AMBIANCE_FILE_VERSION_1003(0x01000003);	// Version 1.0.0.3 (current)
 	static const aalULong AMBIANCE_FILE_VERSION(AMBIANCE_FILE_VERSION_1003);
 
-	static const aalULong FADE_INTERVAL(50);
-	static const aalULong KEY_CONTINUE(0xffffffff);
+	//=============================================================================
+	// Ambiance Timing Constants
+	//=============================================================================
+	// FADE_INTERVAL: Milliseconds between volume updates during fade
+	// KEY_CONTINUE: Special value indicating key should continue indefinitely
+	//=============================================================================
+	static const aalULong FADE_INTERVAL(50);		// 50ms fade update interval
+	static const aalULong KEY_CONTINUE(0xffffffff);	// Infinite key duration
 
+	//=============================================================================
+	// Track Flags
+	//=============================================================================
+	// TRACK_3D: Track uses 3D positioning
+	// TRACK_REVERB: Track has environmental reverb
+	// TRACK_MASTER: Always playing (not conditional)
+	// TRACK_MUTED: Track muted (silent but still playing)
+	// TRACK_PAUSED: Track paused (can be resumed)
+	// TRACK_PREFETCHED: Track audio data preloaded
+	//=============================================================================
 	enum aalTrackFlag
 	{
 		TRACK_3D         = 0x00000001,
@@ -1347,3 +1428,7 @@ namespace ATHENA
 	}
 
 }//ATHENA::
+
+//=============================================================================
+// END OF FILE
+//=============================================================================

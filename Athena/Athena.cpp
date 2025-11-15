@@ -22,24 +22,79 @@ If you have questions concerning this license or the applicable additional terms
 ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 ===========================================================================
 */
-///////////////////////////////////////////////////////////////////////////////
-//                                                                           //
-// TODO                                                                      //
-//                                                                           //
-// Finish reverb implementation                                              //
-// Keep finished instances a while before deleting in case we need it again  //
-// Abstract driver API for testing other libs than DirectSound               //
-// Finish ASF format implementation                                          //
-//                                                                           //
-// Ambiance                                                                  //
-// Make sure global 3D localisation and multiple keys / track works properly //
-//                                                                           //
-///////////////////////////////////////////////////////////////////////////////
-#pragma comment(lib, "dxguid.lib")
-#pragma comment(lib, "dsound.lib")
-#pragma comment(lib, "eaxguid.lib")
-#pragma comment(lib, "implode.lib")
-#pragma comment(lib, "winmm.lib")
+
+//////////////////////////////////////////////////////////////////////////////////////
+// Athena.cpp - Main Athena Audio System Public API
+//////////////////////////////////////////////////////////////////////////////////////
+//
+// Description:
+//		Main public interface for Athena audio system
+//		Athena is the complete audio subsystem of Arx Fatalis
+//		Provides high-level API for all audio functionality
+//
+// Purpose:
+//		- Initialize/shutdown DirectSound and audio system
+//		- Create and manage audio mixers (volume groups)
+//		- Load and play samples (sound effects)
+//		- Create and control ambiances (multi-track soundscapes)
+//		- Manage 3D audio and environmental effects (EAX)
+//		- Update audio system each frame
+//		- Handle threading and synchronization
+//
+// Athena Architecture:
+//		DirectSound Device & Primary Buffer (Windows audio)
+//		├── DirectSound3D Listener (player's ears in 3D space)
+//		├── EAX Environment (reverb/acoustic effects)
+//		├── Mixers (hierarchical volume control groups)
+//		│   ├── Master Mixer
+//		│   ├── SFX Mixer
+//		│   ├── Music Mixer
+//		│   └── Voice Mixer
+//		├── Samples (sound effect metadata)
+//		├── Instances (playing sounds with DirectSound buffers)
+//		└── Ambiances (multi-track ambient soundscapes)
+//
+// Key API Functions:
+//		aalInit() - Initialize audio system (create DirectSound device)
+//		aalClean() - Shutdown audio system (release all resources)
+//		aalUpdate() - Update instances, streaming, callbacks (call each frame)
+//
+//		aalCreateMixer() - Create volume group
+//		aalCreateSample() - Load sound sample metadata
+//		aalCreateAmbiance() - Load multi-track ambiance
+//
+//		aalPlaySample() - Play sound effect (creates Instance)
+//		aalPlayAmbiance() - Play ambient soundscape
+//
+//		aalSetListener*() - Set 3D listener position/orientation
+//		aalSetEnvironment() - Apply environmental reverb preset
+//
+// Threading:
+//		Mutex protects audio system from concurrent access
+//		MUTEX_TIMEOUT: 500ms for most operations
+//		MUTEX_ONUPDATE_TIMEOUT: 200ms for Update (shorter to avoid frame drops)
+//
+// TODO List (from original Arkane developers):
+//		- Finish reverb implementation
+//		- Keep finished instances a while before deleting (instance pooling)
+//		- Abstract driver API for testing other libs than DirectSound
+//		- Finish ASF format implementation (currently incomplete)
+//		- Make sure global 3D localization and multiple keys/track works
+//
+// Supported Audio Formats:
+//		WAV (PCM, ADPCM) - via Athena_Stream_WAV.cpp
+//		ASF (custom) - via Athena_Stream_ASF.cpp (incomplete)
+//
+// Code: Arkane Studios
+//
+// Copyright (c) 1999-2010 ARKANE Studios SA. All rights reserved
+//////////////////////////////////////////////////////////////////////////////////////
+
+#pragma comment(lib, "dxguid.lib")		// DirectX GUIDs
+#pragma comment(lib, "dsound.lib")		// DirectSound
+#pragma comment(lib, "eaxguid.lib")		// EAX GUIDs
+#pragma comment(lib, "implode.lib")		// PKZip compression
+#pragma comment(lib, "winmm.lib")		// Windows Multimedia
 
 #include <Athena.h>
 #include "Athena_Resource.h"
@@ -1892,3 +1947,7 @@ namespace ATHENA
 	}
 
 }//ATHENA::
+
+//=============================================================================
+// END OF FILE
+//=============================================================================
