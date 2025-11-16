@@ -42,13 +42,66 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //            @@@ @@@                           @@             @@        STUDIOS    //
 //////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////
-// ARX_Player
+// ARX_Player - Player Character System
 //////////////////////////////////////////////////////////////////////////////////////
 //
 // Description:
-//		ARX Player management
+//		Player character management and control system
+//		Handles player stats, inventory, skills, movement, and interactions
+//		First-person controller with RPG character progression
 //
-// Updates: (date) (person) (update)
+// Purpose:
+//		- Player movement and physics (walk, run, crouch, jump)
+//		- Character stats (health, mana, strength, dexterity, etc.)
+//		- Skills and attributes (stealth, fighting, magic, etc.)
+//		- Experience and leveling system
+//		- Inventory management integration
+//		- Equipment and armor effects
+//		- Status effects (poisoned, bleeding, drunk, etc.)
+//
+// Player Statistics:
+//		Attributes:
+//		- Strength: Melee damage, carrying capacity
+//		- Dexterity: Accuracy, critical hits, stealth
+//		- Constitution: Health points, stamina
+//		- Mind: Mana pool, spell power
+//
+//		Skills:
+//		- Stealth: Sneaking, pickpocketing
+//		- Mecanism: Lockpicking, trap disarming
+//		- Intuition: Detection, secret finding
+//		- Ethereal Link: Magic affinity
+//		- Object Knowledge: Item identification
+//		- Casting: Spell effectiveness
+//
+//		Vitals:
+//		- Health (HP): Damage before death
+//		- Mana (MP): Magic resource
+//		- Hunger: Survival mechanic
+//		- Poison: Damage over time
+//
+// Movement System:
+//		Walk: Standard movement
+//		Run: Faster movement, stamina drain
+//		Sneak: Slow, quieter movement
+//		Jump: Vertical movement
+//		Crouch: Lower profile, stealth bonus
+//		Swim: Water movement
+//		Climb: Ladder/rope climbing
+//
+// Interaction System:
+//		Use: Activate objects (doors, levers)
+//		Take: Pick up items
+//		Talk: Dialog with NPCs
+//		Attack: Melee/ranged combat
+//		Cast: Magic spells
+//		Examine: Inspect objects
+//
+// Character Progression:
+//		Experience Points (XP) → Level Up
+//		Gain attribute points to distribute
+//		Unlock new abilities and spells
+//		Improve skills through use
 //
 // Code: Cyril Meynier
 //

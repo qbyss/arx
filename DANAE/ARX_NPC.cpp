@@ -42,13 +42,81 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //            @@@ @@@                           @@             @@        STUDIOS    //
 //////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////
-// ARX_NPC
+// ARX_NPC - Non-Player Character AI and Behavior
 //////////////////////////////////////////////////////////////////////////////////////
 //
 // Description:
-//		ARX NPC Management
+//		Complete NPC system with AI, behavior, combat, and interactions
+//		Manages friendly NPCs, enemies, monsters, and ambient creatures
+//		Script-driven AI with pathfinding, combat, and dialog
 //
-// Updates: (date) (person) (update)
+// Purpose:
+//		- NPC creation and management
+//		- AI behavior states (idle, patrol, chase, flee, attack)
+//		- Combat AI (weapon selection, tactics, targeting)
+//		- Pathfinding integration (movement to targets)
+//		- Dialog and conversation system
+//		- NPC stats and progression
+//		- Death and respawn management
+//
+// NPC Types:
+//		Friendly NPCs:
+//		- Shopkeepers: Buy/sell items, dialog
+//		- Quest Givers: Provide quests, rewards
+//		- Allies: Fight alongside player
+//		- Ambient: Background characters
+//
+//		Enemies:
+//		- Humanoid: Goblins, guards, bandits
+//		- Monsters: Trolls, rats, zombies
+//		- Bosses: Unique powerful enemies
+//		- Wildlife: Neutral until provoked
+//
+// AI Behavior States:
+//		Idle: Standing/sitting, ambient animations
+//		Patrol: Walking predetermined route
+//		Wander: Random movement in area
+//		Chase: Pursuing target (player/enemy)
+//		Attack: In combat, using weapon/magic
+//		Flee: Running away when low health/scared
+//		Search: Looking for lost target
+//		Talk: Engaged in conversation
+//		Dead: Corpse state, lootable
+//
+// Combat AI:
+//		Target Selection: Choose enemy to attack
+//		Weapon Choice: Melee vs ranged based on distance
+//		Tactics: Circle strafe, retreat, charge
+//		Group Behavior: Call for help, flank player
+//		Special Abilities: Magic spells, special attacks
+//
+// NPC Statistics:
+//		Health, Armor, Damage
+//		Movement Speed
+//		Attack Range, Damage Type
+//		Resistances (fire, poison, magic)
+//		AI Aggression Level
+//		Detection Range (sight, sound)
+//
+// Pathfinding:
+//		Uses MINOS pathfinding via EERIE anchors
+//		Navigate around obstacles
+//		Follow player or patrol routes
+//		Smart door usage
+//		Jump/climb when needed
+//
+// Dialog System:
+//		Conversation trees with branching choices
+//		Quest dialog integration
+//		NPC mood affects responses
+//		Reputation system (friendly/hostile)
+//
+// Death System:
+//		Death animation and ragdoll
+//		Drop loot (weapons, gold, items)
+//		Corpse persistence
+//		Respawn timers (optional)
+//		Death scripts (trigger events)
 //
 // Code: Cyril Meynier
 //

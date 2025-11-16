@@ -42,13 +42,64 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //            @@@ @@@                           @@             @@        STUDIOS    //
 //////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////
-// ARX_Script
+// ARX_Script - Game Scripting System
 //////////////////////////////////////////////////////////////////////////////////////
 //
 // Description:
-//		ARX Script Management
+//		Complete scripting system for game logic, quests, NPCs, and interactive objects
+//		Custom scripting language for designers to create game behavior
+//		Event-driven system with timers, triggers, and state management
 //
-// Updates: (date) (person) (update)
+// Purpose:
+//		- Execute scripts attached to interactive objects
+//		- Handle game events (collision, use, hit, die, etc.)
+//		- NPC AI behavior scripts
+//		- Quest logic and progression
+//		- Cutscene sequencing
+//		- Dynamic dialog systems
+//
+// Script Language Features:
+//		Commands: SET, IF, ELSE, GOTO, SENDEVENT, PLAYANIM, etc.
+//		Variables: Local and global script variables
+//		Events: INIT, DIE, HIT, COLLISION, USE, LOAD, etc.
+//		Timers: Delayed event execution
+//		Control Flow: Conditionals, loops, labels/goto
+//		Math: Addition, subtraction, comparison
+//
+// Script Events:
+//		INIT: Object creation/level load
+//		DIE: Object destroyed
+//		HIT: Object takes damage
+//		COLLISION: Physical contact with player/NPC
+//		USE: Player activates object
+//		COMBINE: Inventory item combination
+//		CHAT: Dialog with NPC
+//		DETECT: Player enters detection zone
+//		UNDETECT: Player leaves zone
+//		CUSTOM: User-defined events
+//
+// Event-Driven Architecture:
+//		1. Event occurs (player uses door)
+//		2. Find script event handler (ON USE)
+//		3. Execute script commands sequentially
+//		4. Commands can send new events to other objects
+//		5. Timers schedule future event execution
+//
+// Script Execution:
+//		Line-by-line interpreter
+//		Jump to labels for flow control
+//		Call other object scripts via SENDEVENT
+//		Access game state (inventory, stats, quests)
+//		Trigger animations, sounds, special effects
+//
+// Use Cases:
+//		- NPC AI: Guard patrol, chase player, flee when injured
+//		- Doors: Lock/unlock, require keys, trigger traps
+//		- Levers: Open secret passages, activate mechanisms
+//		- Chests: Locked containers, trapped chests, loot tables
+//		- Quest Objects: Track quest progression, give rewards
+//		- Puzzles: Complex multi-step puzzle logic
+//		- Cutscenes: Scripted camera movement, NPC actions
 //
 // Code: Cyril Meynier
 //
@@ -2167,7 +2218,7 @@ char * GetVarValueInterpretedAsText(char * temp1, EERIE_SCRIPT * esss, INTERACTI
 		sprintf(var_text, "%d", l1);
 		return var_text;
 	}
-	else if (temp1[0] == '§')
+	else if (temp1[0] == 'ï¿½')
 	{
 		l1 = GETVarValueLong(&esss->lvar, &esss->nblvar, temp1);
 		sprintf(var_text, "%d", l1);
@@ -2184,7 +2235,7 @@ char * GetVarValueInterpretedAsText(char * temp1, EERIE_SCRIPT * esss, INTERACTI
 
 		return var_text;
 	}
-	else if (temp1[0] == '£')
+	else if (temp1[0] == 'ï¿½')
 	{
 		char * tempo = GETVarValueText(&esss->lvar, &esss->nblvar, temp1);
 
@@ -2225,7 +2276,7 @@ float GetVarValueInterpretedAsFloat(char * temp1, EERIE_SCRIPT * esss, INTERACTI
 
 	}
 	else if (temp1[0] == '#')	return (float)GETVarValueLong(&svar, &NB_GLOBALS, temp1);
-	else if (temp1[0] == '§') return (float)GETVarValueLong(&esss->lvar, &esss->nblvar, temp1);
+	else if (temp1[0] == 'ï¿½') return (float)GETVarValueLong(&esss->lvar, &esss->nblvar, temp1);
 	else if (temp1[0] == '&') return GETVarValueFloat(&svar, &NB_GLOBALS, temp1);
 	else if (temp1[0] == '@') return GETVarValueFloat(&esss->lvar, &esss->nblvar, temp1);
 
@@ -2924,7 +2975,7 @@ long GetNextWord_Interpreted(INTERACTIVE_OBJ * io, EERIE_SCRIPT * es, long i, ch
 	{
 		sprintf(temp, "%d", GETVarValueLong(&svar, &NB_GLOBALS, temp));
 	}
-	else if (temp[0] == '§')
+	else if (temp[0] == 'ï¿½')
 	{
 		sprintf(temp, "%d", GETVarValueLong(&es->lvar, &es->nblvar, temp));
 	}
@@ -2943,7 +2994,7 @@ long GetNextWord_Interpreted(INTERACTIVE_OBJ * io, EERIE_SCRIPT * es, long i, ch
 		if (tempo == NULL) temp[0] = 0;
 		else strcpy(temp, tempo);
 	}
-	else if (temp[0] == '£')
+	else if (temp[0] == 'ï¿½')
 	{
 		char * tempo = GETVarValueText(&es->lvar, &es->nblvar, temp);
 
@@ -9491,7 +9542,7 @@ long SendScriptEvent(EERIE_SCRIPT * es, long msg, char * params, INTERACTIVE_OBJ
 							else sv->type = TYPE_G_TEXT;
 
 							break;
-						case '£': // LOCAL TEXT
+						case 'ï¿½': // LOCAL TEXT
 							strcpy(tempp, GetVarValueInterpretedAsText(temp2, esss, io));
 
 							if (a) RemoveNumerics(tempp);
@@ -9516,7 +9567,7 @@ long SendScriptEvent(EERIE_SCRIPT * es, long msg, char * params, INTERACTIVE_OBJ
 							else sv->type = TYPE_G_LONG;
 
 							break;
-						case '§': // LOCAL LONG
+						case 'ï¿½': // LOCAL LONG
 							ival = (long)GetVarValueInterpretedAsFloat(temp2, esss, io);
 							sv = SETVarValueLong(&esss->lvar, &esss->nblvar, temp, ival);
 
@@ -11051,7 +11102,7 @@ long SendScriptEvent(EERIE_SCRIPT * es, long msg, char * params, INTERACTIVE_OBJ
 							typ1	=	TYPE_FLOAT;
 							fvar1	=	(float)GETVarValueLong(&svar, &NB_GLOBALS, temp);
 							break;
-						case '§':
+						case 'ï¿½':
 							typ1	=	TYPE_FLOAT;
 							fvar1	=	(float)GETVarValueLong(&esss->lvar, &esss->nblvar, temp);
 							break;
@@ -11071,7 +11122,7 @@ long SendScriptEvent(EERIE_SCRIPT * es, long msg, char * params, INTERACTIVE_OBJ
 							else strcpy(tvar1, tempo);
 
 							break;
-						case '£':
+						case 'ï¿½':
 							typ1	=	TYPE_TEXT;
 							tempo	=	GETVarValueText(&esss->lvar, &esss->nblvar, temp);
 
@@ -11125,7 +11176,7 @@ long SendScriptEvent(EERIE_SCRIPT * es, long msg, char * params, INTERACTIVE_OBJ
 							typ2			=	TYPE_FLOAT;
 							fvar2			=	(float)GETVarValueLong(&svar, &NB_GLOBALS, temp3);
 							break;
-						case '§':
+						case 'ï¿½':
 							typ2			=	TYPE_FLOAT;
 							fvar2			=	(float)GETVarValueLong(&esss->lvar, &esss->nblvar, temp3);
 							break;
@@ -11145,7 +11196,7 @@ long SendScriptEvent(EERIE_SCRIPT * es, long msg, char * params, INTERACTIVE_OBJ
 							else strcpy(tvar2, tempo);
 
 							break;
-						case '£':
+						case 'ï¿½':
 							typ2			=	TYPE_TEXT;
 							tempo			=	GETVarValueText(&esss->lvar, &esss->nblvar, temp3);
 
@@ -11427,7 +11478,7 @@ long SendScriptEvent(EERIE_SCRIPT * es, long msg, char * params, INTERACTIVE_OBJ
 					switch (temp1[0])
 					{
 						case '$': // GLOBAL TEXT
-						case '£': // LOCAL TEXT
+						case 'ï¿½': // LOCAL TEXT
 							ShowScriptError("Unable to execute this\nOperation on a String", cmd);
 							break;
 						case '#': // GLOBAL LONG
@@ -11439,7 +11490,7 @@ long SendScriptEvent(EERIE_SCRIPT * es, long msg, char * params, INTERACTIVE_OBJ
 							if (sv != NULL) sv->type = TYPE_G_LONG;
 
 							break;
-						case '§': // LOCAL LONG
+						case 'ï¿½': // LOCAL LONG
 							fval = GetVarValueInterpretedAsFloat(temp2, esss, io);
 							fdval = (float)GETVarValueLong(&esss->lvar, &esss->nblvar, temp1);
 							fval = fdval + fval;
@@ -12916,7 +12967,7 @@ long SendScriptEvent(EERIE_SCRIPT * es, long msg, char * params, INTERACTIVE_OBJ
 					switch (temp1[0])
 					{
 						case '$': // GLOBAL TEXT
-						case '£': // LOCAL TEXT
+						case 'ï¿½': // LOCAL TEXT
 							ShowScriptError("Unable to execute this\nOperation on a String", cmd);
 							break;
 						case '#': // GLOBAL LONG
@@ -12929,7 +12980,7 @@ long SendScriptEvent(EERIE_SCRIPT * es, long msg, char * params, INTERACTIVE_OBJ
 								sv->type = TYPE_G_LONG;
 
 							break;
-						case '§': // LOCAL LONG
+						case 'ï¿½': // LOCAL LONG
 							fval = GetVarValueInterpretedAsFloat(temp2, esss, io);
 							fdval = (float)GETVarValueLong(&esss->lvar, &esss->nblvar, temp1);
 							fval = fval * fdval;
@@ -13059,7 +13110,7 @@ long SendScriptEvent(EERIE_SCRIPT * es, long msg, char * params, INTERACTIVE_OBJ
 							}
 
 							break;
-						case '§':
+						case 'ï¿½':
 							ival = GETVarValueLong(&esss->lvar, &esss->nblvar, temp1);
 
 							if (!strcmp(temp, "--"))
@@ -13147,7 +13198,7 @@ long SendScriptEvent(EERIE_SCRIPT * es, long msg, char * params, INTERACTIVE_OBJ
 					switch (temp1[0])
 					{
 						case '$': // GLOBAL TEXT
-						case '£': // LOCAL TEXT
+						case 'ï¿½': // LOCAL TEXT
 							ShowScriptError("Unable to execute this\nOperation on a String", cmd);
 							break;
 						case '#': // GLOBAL LONG
@@ -13165,7 +13216,7 @@ long SendScriptEvent(EERIE_SCRIPT * es, long msg, char * params, INTERACTIVE_OBJ
 							if (sv != NULL) sv->type = TYPE_G_LONG;
 
 							break;
-						case '§': // LOCAL LONG
+						case 'ï¿½': // LOCAL LONG
 							fval = GetVarValueInterpretedAsFloat(temp2, esss, io);
 							fdval = (float)GETVarValueLong(&esss->lvar, &esss->nblvar, temp1);
 
@@ -13660,7 +13711,7 @@ void ARX_SCRIPT_SetVar(INTERACTIVE_OBJ * io, char * name, char * content)
 				sv->type = TYPE_G_TEXT;
 
 			break;
-		case '£': // LOCAL TEXT
+		case 'ï¿½': // LOCAL TEXT
 
 			if (io == NULL) return;
 
@@ -13681,7 +13732,7 @@ void ARX_SCRIPT_SetVar(INTERACTIVE_OBJ * io, char * name, char * content)
 				sv->type = TYPE_G_LONG;
 
 			break;
-		case '§': // LOCAL LONG
+		case 'ï¿½': // LOCAL LONG
 
 			if (io == NULL) return;
 

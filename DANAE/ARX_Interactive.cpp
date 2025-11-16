@@ -42,13 +42,86 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //            @@@ @@@                           @@             @@        STUDIOS    //
 //////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////
-// ARX_Interactive
+// ARX_Interactive - Interactive Object System
 //////////////////////////////////////////////////////////////////////////////////////
 //
 // Description:
-//		ARX Interactive Objects Management
+//		Core interactive object system managing all game entities
+//		Handles items, NPCs, doors, containers, triggers, and all interactable objects
+//		Central registry for all interactive entities in the game world
 //
-// Updates: (date) (person) (update)
+// Purpose:
+//		- Create and manage all interactive objects
+//		- Object lifecycle (spawn, update, destroy)
+//		- Physics and collision integration
+//		- Script attachment and execution
+//		- Inventory item management
+//		- Object state persistence (save/load)
+//
+// Interactive Object Types:
+//		Items:
+//		- Weapons: Swords, bows, staves
+//		- Armor: Helmets, chest, legs, boots
+//		- Consumables: Potions, food, scrolls
+//		- Quest Items: Keys, artifacts, notes
+//		- Gold: Currency coins and purses
+//		- Junk: Decorative/vendor trash
+//
+//		NPCs:
+//		- Characters: Humanoids, monsters
+//		- Creatures: Animals, fantasy beasts
+//		- Summons: Magically created entities
+//		- Corpses: Dead NPC bodies (lootable)
+//
+//		Containers:
+//		- Chests: Locked/unlocked storage
+//		- Barrels/Crates: Breakable containers
+//		- Bags: Portable storage
+//		- Corpses: NPC inventory after death
+//
+//		Mechanisms:
+//		- Doors: Open/close, locked, scripted
+//		- Levers: Activate mechanisms
+//		- Buttons: Trigger events
+//		- Traps: Damage or effects when triggered
+//
+//		Environment:
+//		- Lights: Torches, candles, magic lights
+//		- Particles: Ambient effects
+//		- Decorative: Non-functional objects
+//		- Triggers: Invisible event zones
+//
+// Interactive Object Structure:
+//		3D Model: Visual representation (EERIE_3DOBJ)
+//		Scripts: Behavior logic (ARX_Script)
+//		Physics: Collision, gravity, position
+//		Inventory: Contained items (for containers/NPCs)
+//		Stats: Health, damage, etc. (for NPCs)
+//		Flags: State bits (visible, movable, pickable, etc.)
+//
+// Object Management:
+//		Creation: Spawn from templates or scripts
+//		Update: Per-frame logic, physics, AI
+//		Rendering: Draw to 3D scene
+//		Interaction: Player use, take, attack
+//		Destruction: Remove from world, trigger death events
+//
+// Object Flags:
+//		IO_MOVABLE: Can be moved/pushed
+//		IO_ITEM: Is inventory item
+//		IO_NPC: Is character/creature
+//		IO_GOLD: Is currency
+//		IO_DOOR: Is door object
+//		IO_FREEZESCRIPT: Pause script execution
+//		IO_INVULNERABILITY: Cannot take damage
+//		Many more for various states/behaviors
+//
+// Interaction System:
+//		Raycast from player to detect target
+//		Check if object is interactive
+//		Execute appropriate action (use, take, talk)
+//		Send script events to object
+//		Update UI to show interaction prompt
 //
 // Code: Cyril Meynier
 //

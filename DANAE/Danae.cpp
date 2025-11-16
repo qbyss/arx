@@ -42,13 +42,49 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //            @@@ @@@                           @@             @@        STUDIOS    //
 //////////////////////////////////////////////////////////////////////////////////////                                                                                     
 //////////////////////////////////////////////////////////////////////////////////////
-// DANAE.CPP
+// DANAE.CPP - Main Game Application
 //////////////////////////////////////////////////////////////////////////////////////
 //
 // Description:
-//		Danae Application Main File
+//		Main game application class for Arx Fatalis
+//		Extends EERIE application framework with game-specific logic
+//		Coordinates all game systems (rendering, physics, AI, scripting, etc.)
 //
-// Updates: (date) (person) (update)
+// Purpose:
+//		- Game initialization and shutdown
+//		- Main game loop (update, render, input)
+//		- Coordinate all game subsystems
+//		- State management (menu, in-game, paused, etc.)
+//		- Global game configuration
+//
+// Game Systems Coordinated:
+//		- EERIE 3D rendering engine
+//		- Athena audio system
+//		- Physics and collision
+//		- AI and NPC behavior
+//		- Scripting system
+//		- Player controller
+//		- Inventory management
+//		- Magic and spells
+//		- Combat system
+//		- Level loading/streaming
+//		- Save/load system
+//		- Menu and UI
+//
+// Main Loop:
+//		while (running):
+//			ProcessInput()      // Handle keyboard/mouse/gamepad
+//			Update(deltaTime)   // Update game state, physics, AI
+//			Render()            // Draw 3D scene, UI, effects
+//			PresentFrame()      // Flip buffers, display to screen
+//
+// Game States:
+//		- Main Menu: Title screen, options, load game
+//		- In-Game: Active gameplay
+//		- Paused: Game frozen, menu overlay
+//		- Loading: Level transition
+//		- Cutscene: Non-interactive sequence
+//		- Death: Player death screen
 //
 // Code: Cyril Meynier
 //
