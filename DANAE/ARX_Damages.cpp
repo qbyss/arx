@@ -54,6 +54,234 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //
 // Copyright (c) 1999 ARKANE Studios SA. All rights reserved
 //////////////////////////////////////////////////////////////////////////////////////
+//=============================================================================
+// FILE: ARX_Damages.cpp
+//=============================================================================
+// Component: DANAE Game Engine - Damage and Combat System
+// Author: Cyril Meynier
+//
+// PURPOSE:
+//		Comprehensive damage calculation, armor system, resistances,
+//		critical hits, death handling, and combat feedback effects.
+//
+// ARCHITECTURE:
+//		Centralized damage processing system coordinating combat mechanics:
+//
+//		Damage Pipeline:
+//		1. Damage Request - Source, target, amount, type
+//		2. Armor Calculation - Apply armor absorption
+//		3. Resistance Calculation - Apply damage type resistances
+//		4. Critical Hit Check - Random chance for bonus damage
+//		5. Apply Damage - Reduce target health
+//		6. Trigger Effects - Blood, pain sounds, screen shake
+//		7. Death Check - Handle target death if health <= 0
+//		8. Script Events - Trigger HIT, OUCH, DIE events
+//
+//		Damage Types:
+//		- DAMAGE_TYPE_FIRE: Fire/heat damage (torches, fireballs)
+//		- DAMAGE_TYPE_COLD: Ice/frost damage (ice spells)
+//		- DAMAGE_TYPE_POISON: Poison/acid damage (over time)
+//		- DAMAGE_TYPE_MAGIC: Raw magical energy
+//		- DAMAGE_TYPE_LIGHTNING: Electric damage (shock)
+//		- DAMAGE_TYPE_PHYSICAL: Melee/arrows (reduced by armor)
+//		- DAMAGE_TYPE_DRAIN_LIFE: Life steal attacks
+//		- DAMAGE_TYPE_DRAIN_MANA: Mana burn attacks
+//		- DAMAGE_TYPE_PUSH: Knockback without damage
+//		- DAMAGE_TYPE_FALL: Falling damage
+//
+// KEY FEATURES:
+//		Damage Calculation:
+//		- Base damage from weapon/spell
+//		- Attribute modifiers (Strength for melee, Dexterity for ranged)
+//		- Armor absorption percentage
+//		- Damage type resistances (fire resist, poison resist, etc.)
+//		- Critical hit multiplier (2x-3x damage)
+//		- Random variance (+/- 20%)
+//
+//		Armor System:
+//		- Each armor piece has absorption rating
+//		- Total armor = sum of all equipped pieces
+//		- Armor reduces physical damage by percentage
+//		- Formula: finalDamage = baseDamage * (1 - armorRating/100)
+//		- Heavy armor: 50-80% reduction
+//		- Medium armor: 30-50% reduction
+//		- Light armor: 10-30% reduction
+//
+//		Resistance System:
+//		- Each character has resistance values per damage type
+//		- Resistance ranges from -100% (vulnerable) to +100% (immune)
+//		- 0%: Normal damage
+//		- 50%: Half damage
+//		- 100%: Immune (no damage)
+//		- -50%: 150% damage (vulnerable)
+//		- Formula: finalDamage = baseDamage * (1 - resistance/100)
+//
+//		Critical Hits:
+//		- Random chance based on attacker stats (Dexterity, Luck)
+//		- Base critical chance: 5%
+//		- Critical multiplier: 2x-3x damage
+//		- Special critical effects: Stun, knockback, bleeding
+//		- Visual feedback: Screen flash, special particle effects
+//
+//		Hit Zones (Locational Damage):
+//		- Head: 2x damage, higher critical chance
+//		- Torso: Normal damage
+//		- Arms/Legs: 0.7x damage
+//		- Back: 1.5x damage (backstab bonus)
+//		- Hit detection via collision sphere hierarchy
+//
+// ALGORITHMS:
+//		ARX_DAMAGES_DealDamages (Main Damage Function):
+//		1. Validate source and target
+//		2. Check immunity flags (IO_INVULNERABILITY)
+//		3. Get base damage amount
+//		4. Apply weapon/spell damage bonuses
+//		5. Apply attribute modifiers:
+//		   - Physical: damage *= (1 + strength/100)
+//		   - Magic: damage *= (1 + mind/100)
+//		6. Check for critical hit:
+//		   - Roll random 0-100
+//		   - If < (5 + dexterity/20): Critical!
+//		   - damage *= criticalMultiplier (2-3x)
+//		7. Apply armor (physical damage only):
+//		   - totalArmor = sum of all armor pieces
+//		   - damage *= (1 - totalArmor/100)
+//		8. Apply damage type resistance:
+//		   - resistance = target.resistances[damageType]
+//		   - damage *= (1 - resistance/100)
+//		9. Apply random variance (+/- 20%):
+//		   - damage *= (0.8 to 1.2)
+//		10. Clamp minimum damage to 1 (if damage > 0)
+//		11. Subtract damage from target health
+//		12. Trigger visual/audio feedback
+//		13. Check if target dead (health <= 0)
+//		14. Send script events (HIT, OUCH, DIE)
+//
+//		Armor Penetration:
+//		- Some weapons have armor penetration rating
+//		- Reduces effective armor value
+//		- Formula: effectiveArmor = armor * (1 - penetration/100)
+//		- Example: 50% penetration vs 60 armor = 30 effective armor
+//
+//		Damage Over Time (Poison, Burning):
+//		- Store DOT effect on target
+//		- Each frame: damage += dotAmount * deltaTime
+//		- Duration countdown
+//		- Visual effects: Green cloud (poison), flames (fire)
+//		- Can stack multiple DOT effects
+//
+// VISUAL FEEDBACK:
+//		Screen Splats (Blood on Screen):
+//		- When player takes damage, blood splat overlays appear
+//		- Array of SCREEN_SPLATS (position, size, texture, fade)
+//		- Fade out over time (1-2 seconds)
+//		- More damage = more/larger splats
+//		- Screen shake intensity proportional to damage
+//
+//		Blood Particles:
+//		- Spawn blood particle spray at impact point
+//		- Direction: Away from attacker
+//		- Color: Red for normal, green for poison, black for undead
+//		- Gravity-affected particles that splat on surfaces
+//		- Leave decals on walls/floor
+//
+//		Pain Animations:
+//		- Hit reaction animations based on damage direction
+//		- Front hit: Stagger backward
+//		- Back hit: Lurch forward
+//		- Side hit: Stumble to side
+//		- Critical hit: Special dramatic reaction
+//		- Death animations: Multiple variations based on damage type
+//
+//		Audio Feedback:
+//		- Impact sounds (flesh, metal, stone)
+//		- Pain grunts/screams (varies by NPC)
+//		- Critical hit sound (special effect)
+//		- Death sounds
+//		- Armor clanging sounds
+//
+// SPECIAL DAMAGE TYPES:
+//		Fall Damage:
+//		- Calculated from falling distance and velocity
+//		- Minor fall (< 200 units): No damage
+//		- Medium fall (200-400 units): 10-30 damage
+//		- High fall (400-800 units): 30-80 damage
+//		- Fatal fall (> 800 units): Instant death
+//		- Reduced by acrobatics skill
+//
+//		Drowning Damage:
+//		- When underwater without air
+//		- Continuous damage over time
+//		- 5 damage per second
+//		- Visual effect: Screen edges darken, bubbles
+//
+//		Fire Damage:
+//		- Initial burst damage from spell impact
+//		- Burning effect: 5 damage/second for 3-10 seconds
+//		- Visual: Character on fire (particle effect)
+//		- Can spread to nearby flammable objects
+//
+//		Poison Damage:
+//		- Low initial damage
+//		- Long duration DOT (10-30 seconds)
+//		- 2-5 damage per second
+//		- Visual: Green aura, coughing animation
+//		- Curable with antidote potion
+//
+// DEATH HANDLING:
+//		When health reaches 0:
+//		1. Set NPC state to DEAD
+//		2. Trigger DIE script event
+//		3. Play death animation
+//		4. Drop inventory items
+//		5. Award experience to killer
+//		6. Create loot container
+//		7. Disable collision (ragdoll or lie flat)
+//		8. After delay: Optional corpse removal
+//
+//		Player Death:
+//		1. Slow-motion effect
+//		2. Screen fade to black
+//		3. Death statistics screen
+//		4. Options: Load saved game, Return to main menu
+//
+// INTEGRATION:
+//		Works with ARX_Equipment for armor calculations
+//		Coordinates with ARX_Player for player stats
+//		Uses ARX_NPC for NPC health and resistances
+//		Integrates with ARX_Script for damage events
+//		Triggers ARX_Particles for blood and effects
+//		Coordinates with ARX_Sound for impact sounds
+//
+// FORMULA EXAMPLES:
+//		Example 1 - Sword Hit on Armored NPC:
+//		Base damage: 25
+//		Strength bonus: 50 strength = +50% = 37.5 damage
+//		Armor: 40 armor = -40% = 22.5 damage
+//		Random variance: 0.9x = 20.25 damage
+//		Final: 20 damage to target
+//
+//		Example 2 - Fireball on Player:
+//		Base damage: 60 fire
+//		Player fire resistance: 30% = -30% = 42 damage
+//		Random variance: 1.1x = 46.2 damage
+//		Final: 46 damage + burning DOT
+//
+//		Example 3 - Critical Backstab:
+//		Base damage: 30
+//		Backstab multiplier: 1.5x = 45
+//		Critical hit: 2.5x = 112.5
+//		Armor: 20% = -20% = 90
+//		Final: 90 damage (massive hit!)
+//
+// USE CASES:
+//		1. Melee combat - Sword swing deals damage based on strength and weapon
+//		2. Ranged combat - Arrow damage with distance falloff
+//		3. Spell damage - Magic projectile with elemental effects
+//		4. Trap damage - Falling into spikes or fire pit
+//		5. Environmental - Lava, poison gas, drowning
+//		6. Fall damage - Jumping from height
+//=============================================================================
 #include <stdio.h>
 #include <stdlib.h>
 

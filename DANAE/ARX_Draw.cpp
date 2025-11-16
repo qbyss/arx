@@ -44,7 +44,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //////////////////////////////////////////////////////////////////////////////////////
 // ARX_Draw
 //////////////////////////////////////////////////////////////////////////////////////
-// 
+//
 // Description:
 //		ARX-specific Drawing Funcs
 //
@@ -55,6 +55,252 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //
 // Copyright (c) 1999-2001 ARKANE Studios SA. All rights reserved
 //////////////////////////////////////////////////////////////////////////////////////
+//=============================================================================
+// FILE: ARX_Draw.cpp
+//=============================================================================
+// Component: DANAE Game Engine - Game-Specific Drawing Utilities
+// Author: Cyril Meynier
+//
+// PURPOSE:
+//		High-level drawing utilities and visual effects specific to Arx Fatalis
+//		gameplay. Extends EERIE rendering engine with game-specific visuals.
+//
+// ARCHITECTURE:
+//		Layer above EERIE rendering providing game-specific drawing functions:
+//
+//		EERIE (Low-Level 3D):
+//		- Basic 3D primitives (triangles, lines, sprites)
+//		- Texture management
+//		- Render state management
+//		- Transformation pipeline
+//
+//		ARX_Draw (Game-Specific):
+//		- Explosion effects (POLYBOOM)
+//		- Blood splatters and decals
+//		- Magic effect visualization
+//		- Hit indicators
+//		- Environmental effects
+//		- Debug visualization
+//
+// KEY FEATURES:
+//		Explosion Rendering (POLYBOOM):
+//		- Dynamic explosion effects at impact points
+//		- Expanding circular/spherical visual
+//		- Fades out over time
+//		- Additive blending for glow effect
+//		- Used for spell impacts, barrel explosions, etc.
+//		- Array of active explosions (MAX_POLYBOOM)
+//		- Each frame: Update size, fade alpha, remove when expired
+//
+//		Blood Decals:
+//		- Project blood splatter texture onto geometry
+//		- Stick to walls/floors at impact point
+//		- Aligned with surface normal
+//		- Fade over time (10-30 seconds)
+//		- Maximum limit to prevent performance issues
+//		- Used for combat feedback
+//
+//		Magic Trails:
+//		- Particle trails following magic projectiles
+//		- Colored based on spell type (red=fire, blue=ice, etc.)
+//		- Fading tail effect
+//		- Curved path following projectile arc
+//
+//		Hit Flash Effects:
+//		- Screen flash on player damage
+//		- Red tint overlay
+//		- Intensity based on damage amount
+//		- Quick fade (0.2-0.5 seconds)
+//		- Directional indicator (damaged from which side)
+//
+//		Screen Effects:
+//		- Screen shake (impacts, explosions)
+//		- Motion blur (fast movement)
+//		- Underwater distortion
+//		- Poisoned vision (green tint)
+//		- Low health (desaturated, vignette)
+//
+//		Debug Visualization:
+//		- Wireframe rendering toggle
+//		- Collision cylinder display
+//		- Pathfinding waypoint lines
+//		- Light source visualization
+//		- Performance graphs (FPS, frame time)
+//
+// ALGORITHMS:
+//		POLYBOOM Explosion Effect:
+//		Structure: POLYBOOM { pos, size, color, alpha, startTime, duration, flags }
+//
+//		Create Explosion at Position:
+//		1. Find free POLYBOOM slot (or reuse oldest)
+//		2. Set position = impact point
+//		3. Set initial size = 10 units
+//		4. Set color based on explosion type
+//		5. Set alpha = 1.0 (fully opaque)
+//		6. Set startTime = current time
+//		7. Set duration = 0.5 to 2.0 seconds
+//
+//		Update Explosion (Each Frame):
+//		For each active POLYBOOM:
+//		1. Calculate age = currentTime - startTime
+//		2. If age > duration: Remove explosion, continue
+//		3. Calculate progress = age / duration (0.0 to 1.0)
+//		4. Update size: size = initialSize + (maxSize - initialSize) * progress
+//		   - Exponential growth: size *= (1 + progress^2)
+//		5. Update alpha: alpha = 1.0 - progress (fade out)
+//		6. Render billboard quad:
+//		   - Position at explosion center
+//		   - Size determined by calculated size
+//		   - Texture: Explosion sprite
+//		   - Color with calculated alpha
+//		   - Additive blending for glow
+//
+//		Soft Z-Buffer Clipping (ARX_DrawPrimitive_SoftClippZ):
+//		Purpose: Prevent hard clipping at near plane
+//		1. For each vertex of primitive:
+//		2. If vertex.z < nearPlane:
+//		   a. Calculate intersection with near plane
+//		   b. Split polygon at intersection
+//		   c. Create new vertices at clip boundary
+//		3. Only render portions beyond near plane
+//		4. Result: Smooth fade instead of hard cut-off
+//		5. Used for large objects that might clip camera
+//
+//		Blood Splatter Projection:
+//		1. Get impact point and surface normal
+//		2. Create billboard quad facing camera
+//		3. Align quad to surface normal (not pure billboard)
+//		4. Random rotation for variation
+//		5. Project onto geometry:
+//		   - Use stencil buffer to limit to surface
+//		   - Or use texture splatting (additive blend)
+//		6. Add to active decal list
+//		7. Fade over time: alpha -= deltaTime / lifetime
+//
+//		Screen Shake Effect:
+//		1. On impact/explosion: Set shake intensity
+//		2. Each frame:
+//		   a. Generate random offset: (-intensity to +intensity)
+//		   b. Apply to camera position
+//		   c. Decay intensity: intensity *= 0.9
+//		3. When intensity < threshold: Stop shake
+//		4. Result: Camera jitters, then settles
+//
+// SPECIAL EFFECTS:
+//		Underwater Rendering:
+//		- Blue tint overlay
+//		- Caustics texture animation (light patterns)
+//		- Fog increased (shorter view distance)
+//		- Bubbles particle effect
+//		- Distortion shader (wave effect)
+//
+//		Poison Visual Effect:
+//		- Green color overlay (multiply blend)
+//		- Pulsing intensity (sine wave)
+//		- Slight blur/distortion
+//		- Duration based on poison strength
+//
+//		Low Health Warning:
+//		- Desaturation (reduce color saturation)
+//		- Vignette effect (darken screen edges)
+//		- Pulse red tint (heartbeat rhythm)
+//		- Increases as health decreases
+//
+//		Spell Casting Glow:
+//		- Character hands emit colored light
+//		- Particles orbit hands
+//		- Brightness increases during casting
+//		- Color matches spell type
+//
+// DEBUG VISUALIZATION:
+//		Collision Cylinder Display:
+//		- Draw wireframe cylinder at NPC/player position
+//		- Color: Green = normal, Red = collision detected
+//		- Shows height and radius
+//		- Toggle with debug key
+//
+//		Pathfinding Visualization:
+//		- Draw lines connecting waypoints
+//		- Show current path in green
+//		- Show failed paths in red
+//		- Display anchor points
+//
+//		Performance Graphs:
+//		- FPS graph (60 samples, line graph)
+//		- Frame time graph (60 samples)
+//		- Memory usage bar
+//		- Particle count
+//		- Draw call count
+//
+//		Light Source Display:
+//		- Draw sphere at light position
+//		- Color matches light color
+//		- Size matches light radius
+//		- Shows which lights are active
+//
+// CLIPPING AND CULLING:
+//		Soft Clipping:
+//		- Prevents hard edges when objects clip near plane
+//		- Interpolates vertices at clip boundary
+//		- Smoother visual than hard clipping
+//		- Extra cost: Only use for important objects
+//
+//		Z-Buffer Optimization:
+//		- Test primitive bounding box against Z-buffer
+//		- If entirely behind other geometry: Skip rendering
+//		- Reduces overdraw
+//		- Performance improvement in dense scenes
+//
+// RENDERING TECHNIQUES:
+//		Additive Blending (Explosions, Magic):
+//		- Source + Destination (no alpha)
+//		- Creates glow effect
+//		- Bright areas become very bright
+//		- Used for fire, explosions, magic
+//
+//		Alpha Blending (Blood, Decals):
+//		- Source * Alpha + Destination * (1 - Alpha)
+//		- Smooth transparency
+//		- Used for blood, smoke, UI elements
+//
+//		Multiplicative Blending (Shadows, Tints):
+//		- Source * Destination
+//		- Darkens underlying pixels
+//		- Used for shadows, color filters
+//
+// INTEGRATION:
+//		Built on top of EERIE rendering engine
+//		Coordinates with ARX_Particles for particle effects
+//		Uses ARX_Interactive for object rendering
+//		Integrates with ARX_Spells for magic visuals
+//		Works with ARX_Scene for rendering pipeline
+//		Uses ARX_Menu2 for debug options
+//
+// PERFORMANCE:
+//		POLYBOOM Limits:
+//		- Maximum active explosions: MAX_POLYBOOM (typically 32)
+//		- When limit reached: Reuse oldest explosion
+//		- Each explosion: 2 triangles (1 quad)
+//		- Minimal performance impact
+//
+//		Decal Limits:
+//		- Maximum blood decals: 50-100
+//		- Automatic cleanup of oldest decals
+//		- Low-detail mode: Reduce decal count
+//
+//		Screen Effects:
+//		- Full-screen effects expensive (every pixel)
+//		- Use simple shaders or fixed-function
+//		- Low-end mode: Disable screen effects
+//
+// USE CASES:
+//		1. Fireball Impact - Create POLYBOOM at impact point
+//		2. Sword Hit - Spawn blood particles and decal
+//		3. Player Damaged - Flash screen red briefly
+//		4. Explosion - Screen shake + POLYBOOM effect
+//		5. Underwater - Apply blue tint and caustics
+//		6. Debug Mode - Visualize collision cylinders
+//=============================================================================
 
 #include <ARX_Draw.h>
 
