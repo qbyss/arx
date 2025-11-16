@@ -22,14 +22,86 @@ If you have questions concerning this license or the applicable additional terms
 ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 ===========================================================================
 */
-///////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
+// ARX_Interface - User Interface and HUD System
+//////////////////////////////////////////////////////////////////////////////////////
 //
-// ARX_Interface.cpp
-// ARX Interface Management
+// Description:
+//		Complete user interface system for in-game HUD, menus, and interaction
+//		Manages inventory display, character stats, minimap, spell book, and overlays
+//		Handles mouse interaction with UI elements and world objects
+//
+// Purpose:
+//		- In-game HUD (health, mana, hunger bars)
+//		- Inventory screen (drag/drop items, equipment slots)
+//		- Character sheet (stats, skills, attributes)
+//		- Spell book interface (rune combinations, memorized spells)
+//		- Minimap and world map
+//		- Interaction prompts (Use, Take, Talk)
+//		- Tooltips and item descriptions
+//		- Quest log and journal
+//
+// UI Components:
+//		HUD Overlay:
+//		- Health bar (red, shows damage)
+//		- Mana bar (blue, magic resource)
+//		- Hunger bar (survival mechanic)
+//		- Quick item slots (fast use potions/items)
+//		- Active spell indicators
+//		- Damage numbers (floating combat text)
+//
+//		Inventory System:
+//		- Grid-based inventory (items occupy slots)
+//		- Drag and drop interface
+//		- Equipment slots (head, chest, legs, boots, weapons)
+//		- Item weight and carrying capacity
+//		- Item stacking (arrows, gold, consumables)
+//		- Quick equip/unequip
+//
+//		Character Screen:
+//		- Attribute display (Strength, Dexterity, etc.)
+//		- Skill values and progression
+//		- Experience points and level
+//		- Armor rating and resistances
+//		- 3D character model preview with equipped items
+//
+//		Spell Book:
+//		- Rune library (available magic runes)
+//		- Rune combination interface
+//		- Memorized spells (quick cast slots)
+//		- Mana costs and descriptions
+//		- Spell level requirements
+//
+//		Minimap:
+//		- Top-down view of current area
+//		- Player position indicator
+//		- Points of interest markers
+//		- Fog of war (unexplored areas dark)
+//		- Zoom levels
+//
+// Mouse Interaction:
+//		World Interaction:
+//		- Raycast to detect objects
+//		- Highlight interactive objects
+//		- Show context menu (Use/Take/Examine)
+//		- Drag items from world to inventory
+//
+//		UI Interaction:
+//		- Click buttons and tabs
+//		- Drag items between inventory slots
+//		- Hover tooltips
+//		- Scroll lists and text
+//
+// Visual Elements:
+//		2D UI Rendering: Drawn over 3D scene
+//		Transparency: Alpha blending for overlays
+//		Animations: Smoothly show/hide panels
+//		Icon System: Item icons, spell icons, status icons
+//
+// Code: Cyril Meynier
 //
 // Copyright (c) 1999-2000 ARKANE Studios SA. All rights reserved
-//
-///////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
 
 #include "ARX_Interface.h"
 #include "ARX_Minimap.h"
