@@ -54,6 +54,85 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //
 // Copyright (c) 1999-2000 ARKANE Studios SA. All rights reserved
 ///////////////////////////////////////////////////////////////////////////////////////
+//=============================================================================
+// FILE: ARX_Fogs.cpp
+//=============================================================================
+// Component: DANAE Game Engine - Volumetric Fog System
+// Author: Cyril Meynier
+//
+// PURPOSE:
+//		Localized volumetric fog effects using animated 3D fog volumes.
+//		Creates atmospheric fog clouds for dungeons and outdoor areas.
+//
+// ARCHITECTURE:
+//		Particle-based volumetric fog with 3D object rendering:
+//		- FOG_DEF: Fog definition with properties (color, size, speed)
+//		- Array of active fog zones (MAX_FOG)
+//		- Each fog spawns multiple fog particles over time
+//		- 3D fog object rendered with transparency for each particle
+//
+// KEY FEATURES:
+//		Fog Properties (FOG_DEF):
+//		- Position and bounding box
+//		- RGB color (typical: blue-gray for dungeon, white for outdoor)
+//		- Size: Fog particle scale (1.0 to 20.0)
+//		- Frequency: Particles spawned per second
+//		- Speed: Movement speed of fog particles
+//		- Rotation speed: Fog slowly rotates for animation
+//		- Lifetime: How long each fog particle lasts
+//		- Fade in/out curves for smooth appearance/disappearance
+//
+//		Fog Animation:
+//		- Particles drift slowly (wind simulation)
+//		- Gentle rotation for organic feel
+//		- Size pulsing (breathing effect)
+//		- Fade in when spawned, fade out before death
+//		- Random variation for each particle
+//
+//		Fog Rendering:
+//		- 3D fog object (low-poly sphere or cloud mesh)
+//		- Alpha blending for transparency
+//		- Additive blending option for magical fog
+//		- Soft particle rendering (depth fade)
+//		- Distance-based LOD (fewer particles far away)
+//
+// ALGORITHMS:
+//		Fog Update (Each Frame):
+//		For each active fog zone:
+//		1. Calculate particles to spawn this frame
+//		2. For each spawned particle:
+//		   - Random position within fog bounds
+//		   - Random initial rotation
+//		   - Set lifetime from fog.tolive
+//		3. Update existing particles:
+//		   - Apply movement: pos += velocity * deltaTime
+//		   - Apply rotation: angle += rotateSpeed * deltaTime
+//		   - Fade alpha based on age/lifetime ratio
+//		   - If lifetime expired: Remove particle
+//		4. Render all fog particles for this zone
+//
+//		Fog Template (fogcopy):
+//		- Default fog configuration
+//		- frequency: 17 particles/second
+//		- color: (0.3, 0.3, 0.5) - bluish
+//		- rotatespeed: 0.001 rad/sec - very slow
+//		- scale: 8.0 - medium size
+//		- size: 80 units
+//		- speed: 1.0 unit/sec - slow drift
+//		- tolive: 4500ms (4.5 seconds per particle)
+//
+// INTEGRATION:
+//		Uses ARX_Particles for fog particle management
+//		Works with ARX_Time for frame timing
+//		Coordinates with ARX_Menu2 for quality settings
+//		Uses EERIE 3D objects for fog visual
+//
+// USE CASES:
+//		1. Dungeon Atmosphere: Blue-gray fog in corridors
+//		2. Swamp: Green tinted, thick low fog
+//		3. Magic Area: Colored, glowing fog
+//		4. Outdoor: White morning mist
+//=============================================================================
 #include "ARX_Fogs.h"
 #include "ARX_Particles.h"
 #include "ARX_time.h"
