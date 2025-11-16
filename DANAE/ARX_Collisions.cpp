@@ -54,6 +54,202 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //
 // Copyright (c) 1999-2001 ARKANE Studios SA. All rights reserved
 //////////////////////////////////////////////////////////////////////////////////////
+//=============================================================================
+// FILE: ARX_Collisions.cpp
+//=============================================================================
+// Component: DANAE Game Engine - Collision Detection and Response System
+// Author: Cyril Meynier
+//
+// PURPOSE:
+//		Comprehensive collision detection system for player, NPCs, objects,
+//		and level geometry. Handles movement validation, collision response,
+//		and sliding mechanics.
+//
+// ARCHITECTURE:
+//		Cylinder-based collision detection with hierarchical spatial queries:
+//
+//		Collision Primitives:
+//		- EERIE_CYLINDER: Primary collision shape for characters (origin, radius, height)
+//		- EERIE_SPHERE: Used for area queries and projectile detection
+//		- Polygons (EERIEPOLY): Level geometry collision surfaces
+//		- Oriented Bounding Boxes (OBB): For complex object collision
+//
+//		Spatial Organization:
+//		- Background Grid (ACTIVEBKG): Level divided into cells for fast lookup
+//		- FAST_BKG_DATA: Stores polygons per grid cell for spatial queries
+//		- TreatZone System: Limits collision checks to nearby objects
+//
+// KEY FEATURES:
+//		Cylinder Collision Detection:
+//		- CheckAnythingInCylinder: Primary collision test for character movement
+//		- Tests cylinder against level geometry (polygons)
+//		- Tests cylinder against other interactive objects (NPCs, items, platforms)
+//		- Returns Y offset needed to place cylinder in valid position
+//		- Handles climbing surfaces (POLY_CLIMB flag)
+//
+//		Movement System (ARX_COLLISION_Move_Cylinder):
+//		- Incremental movement along desired path with collision response
+//		- Automatic sliding along obstacles when direct path blocked
+//		- Climbing system for stairs and slopes
+//		- Platform riding (moving platforms)
+//		- NPC avoidance and pushing
+//
+//		Collision Response:
+//		- Sliding: When blocked, try angled paths left/right to slide along walls
+//		- Climbing: Allow vertical movement up stairs/slopes within tolerance
+//		- Pushing: NPCs can push each other within limits
+//		- Script Events: Trigger COLLIDE_NPC, COLLIDE_DOOR, COLLIDE_FIELD events
+//
+//		Sphere Queries:
+//		- CheckAnythingInSphere: Area-of-effect collision detection
+//		- CheckEverythingInSphere: Returns all objects in radius
+//		- CheckBackgroundInSphere: Test sphere against level geometry only
+//		- Used for explosion radius, spell effects, proximity detection
+//
+// ALGORITHMS:
+//		IsPolyInCylinder:
+//		1. Quick rejection: Check if polygon Y range intersects cylinder height
+//		2. Distance check: Find nearest polygon vertex to cylinder center (2D)
+//		3. If nearest distance > radius + threshold, reject
+//		4. Detailed sampling: Test polygon vertices, edges, center against cylinder
+//		5. For large polygons: Add extra sample points for precision
+//		6. Set POLYIN flag if cylinder contains any part of polygon
+//		7. Return minimum Y coordinate where collision occurs
+//
+//		ARX_COLLISION_Move_Cylinder (Incremental Movement with Sliding):
+//		1. Calculate movement vector from startpos to targetpos
+//		2. Break movement into small steps (MOVE_CYLINDER_STEP)
+//		3. For each step:
+//		   a. Attempt direct movement in desired direction
+//		   b. If valid: accept movement, continue
+//		   c. If blocked: try sliding at angles left/right
+//		   d. Test angles from 10° to 70° in both directions
+//		   e. Choose shortest angle that works
+//		   f. If no angle works: stop movement, return FALSE
+//		4. Handle climbing: allow limited vertical movement up slopes
+//		5. Update final cylinder position
+//
+//		Sliding Algorithm:
+//		When direct path blocked:
+//		- Try rotating movement vector by angles: 10°, 20°, 30°... up to 70°
+//		- Test both right (clockwise) and left (counter-clockwise)
+//		- Pick the smallest angle that produces valid movement
+//		- This creates smooth sliding along walls and obstacles
+//		- Player uses finer angles (10° steps) for smoother feel
+//		- NPCs use coarser angles (30° steps) for performance
+//
+//		Cylinder-in-Cylinder Test (NPC Collision):
+//		- 2D distance check between cylinder centers (XZ plane)
+//		- If distance < (radius1 + radius2): potential collision
+//		- Check Y overlap: (origin1.y to origin1.y+height1) vs (origin2.y to origin2.y+height2)
+//		- If both overlap: cylinders collide
+//		- Trigger SM_COLLIDE_NPC script event for both NPCs
+//		- Handle damaging collisions (damager_damages field)
+//
+// COLLISION FLAGS:
+//		CFLAG_LEVITATE: Object ignores gravity, floats in air
+//		CFLAG_NO_INTERCOL: Skip interactive object collision (only level geometry)
+//		CFLAG_SPECIAL: Special validation rules
+//		CFLAG_EASY_SLIDING: Finer angle steps for smoother sliding (player)
+//		CFLAG_CLIMBING: Allow vertical movement for stairs
+//		CFLAG_JUST_TEST: Test only, don't trigger events or modify state
+//		CFLAG_NPC: NPC-specific behavior (different tolerances)
+//		CFLAG_PLAYER: Player-specific behavior
+//		CFLAG_EXTRA_PRECISION: More sampling points for small/critical objects
+//		CFLAG_NO_HEIGHT_MOD: Don't allow height changes > 30 units
+//		CFLAG_RETURN_HEIGHT: Modify cylinder Y to valid position
+//		CFLAG_COLLIDE_NOCOL: Collide even with IO_NO_COLLISIONS objects
+//
+// OPTIMIZATION:
+//		Background Grid Acceleration:
+//		- Level divided into 100x100 unit cells
+//		- Each cell stores list of polygons within it
+//		- Collision query converts world pos to grid coords
+//		- Only test polygons in relevant cells (radius-based range)
+//		- Typical query: ~5-20 cells instead of all 10,000+ polygons
+//
+//		TreatZone Culling:
+//		- Only test NPCs/objects near player (TREATZONE_CUR limit)
+//		- Distant objects excluded from collision checks
+//		- Reduces NPC collision tests from 200+ to ~20-40
+//
+//		Distance-Based LOD:
+//		- Objects >1000 units away: skip collision
+//		- Large vertex models: test every Nth vertex (step=6 for 1200+ verts)
+//		- Grouped objects: test group origins first, then subdivide
+//
+//		Early Rejection:
+//		- Bounding box tests before detailed geometry
+//		- 2D distance checks before 3D
+//		- Y-range tests before XZ containment
+//		- Area-based precision (small polys skip extra samples)
+//
+// SPECIAL CASES:
+//		Platforms (GFLAG_PLATFORM):
+//		- Objects can ride on moving platforms
+//		- Platform detection: ON_PLATFORM flag set if standing on one
+//		- PushIO_ON_Top: Moves objects on platform when platform moves
+//		- Elevator/moving floor support
+//
+//		Climbing Surfaces (POLY_CLIMB):
+//		- Ladders, ropes, climbable walls
+//		- COLLIDED_CLIMB_POLY flag set when touching climb surface
+//		- Allows different movement rules when climbing
+//
+//		Doors (GameFlags & GFLAG_DOOR):
+//		- Trigger SM_COLLIDE_DOOR event when touched
+//		- Throttled to max once per 500ms to prevent spam
+//		- Allows doors to open/close in response to collision
+//
+//		Force Fields (IO_FIELD):
+//		- Trigger SM_COLLIDE_FIELD event on contact
+//		- Used for damage fields, teleporters, triggers
+//		- Can push back or damage entities
+//
+//		View Blockers (GFLAG_VIEW_BLOCKER):
+//		- Objects that block line-of-sight but may not block movement
+//		- Used in IO_Visible for AI visibility checks
+//		- Allows invisible walls, force fields, fog
+//
+// INTEGRATION:
+//		Works with ARX_Physics.cpp for gravity and object placement
+//		Uses ARX_Interactive.cpp for object properties and state
+//		Coordinates with ARX_Script.cpp for collision event triggers
+//		Integrates with ARX_Damages.cpp for collision damage
+//		Uses HERMES pathfinding data for NPC movement
+//
+// COORDINATE SYSTEM:
+//		World space (not camera space)
+//		Y-axis: Vertical (up is positive, gravity is negative)
+//		Cylinder origin: Base of cylinder (feet position for characters)
+//		Cylinder extends from origin.y to origin.y + height
+//
+// TYPICAL USAGE:
+//		Player Movement:
+//		1. Calculate desired position from input
+//		2. Set up IO_PHYSICS with start and target positions
+//		3. Call ARX_COLLISION_Move_Cylinder with CFLAG_PLAYER | CFLAG_EASY_SLIDING
+//		4. System automatically handles sliding, climbing, collision events
+//		5. Final cylinder position = player's new position
+//
+//		NPC Movement:
+//		1. Pathfinding calculates next waypoint
+//		2. Set up cylinder movement from current pos to waypoint
+//		3. Call ARX_COLLISION_Move_Cylinder with CFLAG_NPC
+//		4. Handle collision response (stuck detection, repath, etc.)
+//
+//		Spell Area Effect:
+//		1. Create EERIE_SPHERE at spell impact point
+//		2. Call CheckEverythingInSphere to get all affected targets
+//		3. Apply spell effect to each target in EVERYTHING_IN_SPHERE array
+//		4. Use exceptions list to skip certain targets (caster, allies)
+//
+//		Object Placement:
+//		1. Create EERIE_CYLINDER at desired position
+//		2. Call AttemptValidCylinderPos with CFLAG_RETURN_HEIGHT
+//		3. System adjusts cylinder.origin.y to nearest valid surface
+//		4. Place object at validated position
+//=============================================================================
 
 #include <stdlib.h>
 #include "ARX_Collisions.h"

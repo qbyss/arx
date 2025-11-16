@@ -54,6 +54,90 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //
 // Copyright (c) 1999-2000 ARKANE Studios SA. All rights reserved
 /////////////////////////////////////////////////////////////////////////////////////
+//=============================================================================
+// FILE: ARX_Physics.cpp
+//=============================================================================
+// Component: DANAE Game Engine - Physics System
+// Author: Cyril Meynier
+//
+// PURPOSE:
+//		Game physics simulation system handling gravity, falling objects,
+//		projectile motion, and object movement in the 3D world.
+//
+// ARCHITECTURE:
+//		Simplified physics simulation integrated with collision detection:
+//		- Object falling and gravity simulation
+//		- Projectile trajectory calculation (arrows, spells)
+//		- Sliding physics on slopes
+//		- Object placement validation
+//		- Ground detection and snapping
+//
+// KEY FEATURES:
+//		Object Physics:
+//		- Gravity simulation with configurable acceleration
+//		- Friction modeling for sliding objects
+//		- Velocity and momentum tracking
+//		- Collision response integration
+//
+//		Ground Detection:
+//		- BCCheckInPoly: Find ground polygon beneath object
+//		- Height queries for proper object placement
+//		- Support for multi-level geometry (bridges, platforms)
+//		- Water and transparent surface filtering
+//
+//		Movement Validation:
+//		- Check if position is valid before placing objects
+//		- Prevent objects from floating in air
+//		- Snap objects to nearest valid surface
+//		- Handle special cases (stairs, slopes, platforms)
+//
+// ALGORITHMS:
+//		Ground Detection (BCCheckInPoly):
+//		1. Convert world coordinates to background grid coordinates
+//		2. Scan polygons in the grid cell
+//		3. Filter out water and transparent polygons
+//		4. Find polygon above given Y position with XZ containment
+//		5. Return closest polygon above the point
+//		6. Handle multi-level geometry by checking vertical spacing
+//
+//		Gravity Simulation:
+//		- Apply acceleration: velocity.y += gravity * deltaTime
+//		- Update position: pos.y += velocity.y * deltaTime
+//		- Check for ground collision after each update
+//		- Apply bounce or stop based on material properties
+//
+//		Projectile Motion:
+//		- Parabolic trajectory with gravity
+//		- Air resistance simulation (optional)
+//		- Wind influence on arrows/magic projectiles
+//		- Collision detection along flight path
+//
+// INTEGRATION:
+//		Works with ARX_Collisions.cpp for movement validation
+//		Uses EERIE background grid for spatial optimization
+//		Coordinates with ARX_Interactive.cpp for object physics
+//		Integrates with ARX_Damages.cpp for fall damage calculation
+//
+// PERFORMANCE:
+//		- Background grid acceleration for polygon queries
+//		- Early rejection for out-of-bounds positions
+//		- Minimal physics simulation (no full rigid body dynamics)
+//		- Optimized for gameplay feel over physical accuracy
+//
+// COORDINATE SYSTEM:
+//		Y-axis: Vertical (up is positive)
+//		X-axis: Horizontal width
+//		Z-axis: Horizontal depth
+//		Physics uses world space coordinates (not camera space)
+//
+// USE CASES:
+//		1. Dropping items from inventory - they fall to ground with gravity
+//		2. Arrow flight - parabolic trajectory with wind influence
+//		3. NPC placement - validate position and snap to ground
+//		4. Platform movement - objects ride on moving platforms
+//		5. Falling damage - detect falling distance and apply damage
+//		6. Object stacking - prevent items from floating in air
+//=============================================================================
 #include "ARX_Physics.h"
 #include "EERIEMath.h"
 #include "EERIEPhysicsBox.h"
