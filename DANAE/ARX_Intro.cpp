@@ -22,6 +22,52 @@ If you have questions concerning this license or the applicable additional terms
 ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 ===========================================================================
 */
+//=============================================================================
+// FILE: ARX_Intro.cpp
+//=============================================================================
+// Component: DANAE Game Engine - Intro and Splash Screens
+// Author: Cyril Meynier
+//
+// PURPOSE:
+//		Displays company logos and game intro sequences during startup.
+//		Manages loading screens with progress bars between levels.
+//
+// KEY FEATURES:
+//		Company Logos:
+//		- FISHTANK_img: Fishtank Interactive logo
+//		- ARKANE_img: Arkane Studios logo
+//		- Centered display with aspect ratio preservation
+//		- Fade in/fade out effects
+//		- Timed display duration
+//
+//		Loading Screens:
+//		- LoadScreen: Clears and presents frame during loading
+//		- DrawCenteredImage: Centers image on screen
+//		- Ratio preservation for different resolutions
+//		- Progress bar integration (PROGRESS_BAR_COUNT)
+//
+//		Screen Management:
+//		- ARX_INTERFACE_KillFISHTANK: Release Fishtank logo texture
+//		- ARX_INTERFACE_KillARKANE: Release Arkane logo texture
+//		- Memory cleanup after logos displayed
+//
+// DISPLAY SEQUENCE:
+//		1. Game Launch
+//		2. Show Fishtank Interactive logo (3-5 seconds)
+//		3. Fade out Fishtank, release texture
+//		4. Show Arkane Studios logo (3-5 seconds)
+//		5. Fade out Arkane, release texture
+//		6. Show loading screen with progress bar
+//		7. Load game assets
+//		8. Transition to main menu
+//
+// INTEGRATION:
+//		Works with ARX_Interface for progress bar
+//		Uses ARX_Levels for level loading coordination
+//		Integrates with ARX_Sound for startup audio
+//		Coordinates with ARX_Menu for main menu transition
+//		Uses EERIE texture and draw systems
+//=============================================================================
 #include "ARX_Interface.h"
 #include "ARX_Levels.h"
 #include "ARX_Menu.h"
