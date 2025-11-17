@@ -22,19 +22,65 @@ If you have questions concerning this license or the applicable additional terms
 ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 ===========================================================================
 */
-///////////////////////////////////////////////////////////////////////////////
-// EERIEAnchors
-///////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
+// EERIEAnchors - Navigation Anchor System
+//////////////////////////////////////////////////////////////////////////////////////
 //
 // Description:
-//		Anchors funcs
+//		Navigation anchor point system for level connectivity
+//		Manages waypoints,zones, and pathfinding nodes in 3D space
+//		Links level geometry to navigation system (MINOS integration)
 //
-// Updates: (date) (person) (update)
+// Purpose:
+//		- Define navigation waypoints in 3D level
+//		- Link anchors to level polygons (walkable surfaces)
+//		- Provide height/position for navigation queries
+//		- Zone management (divide level into connected regions)
+//		- Dynamic anchor creation/removal for moving platforms
+//
+// Anchor System:
+//		Anchor: 3D point in world space linked to a polygon
+//		Polygon Link: Which polygon the anchor sits on
+//		Height: Vertical position (Y coordinate)
+//		Zone: Region ID for connectivity queries
+//		Neighbors: Connected anchors for path graph
+//
+// Anchor Types:
+//		Navigation Anchors: Waypoints for pathfinding
+//		Zone Anchors: Define region boundaries
+//		Dynamic Anchors: Moving platforms, elevators
+//		Height Anchors: Terrain height queries
+//
+// Key Functions:
+//		ANCHOR_CheckInPolyPrecis(): Find polygon at 3D position
+//		Find anchor on walkable surface for pathfinding
+//		Precise polygon lookup using background grid
+//
+// Integration with MINOS:
+//		Anchors provide discrete waypoints for A* pathfinding
+//		Each anchor represents a walkable position
+//		Anchor neighbors form navigation graph edges
+//		MINOS finds path through anchor network
+//
+// Height Queries:
+//		Game logic queries anchor system for floor height
+//		Used for:
+//		- Placing objects on ground
+//		- Character movement (where to step)
+//		- Projectile collision (when does arrow hit ground)
+//		- Line of sight calculations
+//
+// Use Cases:
+//		- NPC pathfinding (find walkable route)
+//		- Object placement (spawn item on ground)
+//		- Height queries (where is floor at X,Z?)
+//		- Zone connectivity (can reach other room?)
+//		- Moving platforms (elevator anchors)
 //
 // Code: Cyril Meynier
 //
 // Copyright (c) 1999-2001 ARKANE Studios SA. All rights reserved
-///////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
 
 #include <EERIEAnchors.h>
 #include "eerieapp.h"

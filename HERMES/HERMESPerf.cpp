@@ -42,11 +42,23 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //            @@@ @@@                           @@             @@        STUDIOS    //
 //////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////
-// HERMESMain
+// HERMESPerf.cpp - Performance Monitoring (DISABLED)
 //////////////////////////////////////////////////////////////////////////////////////
 //
 // Description:
-//		HUM...hum...
+//		Stub file for performance profiling and monitoring functionality.
+//		All functionality has been removed/disabled - file contains only includes.
+//
+// Purpose:
+//		Originally intended for profiling HERMES resource loading performance.
+//		Would have tracked timing, memory usage, and bottlenecks.
+//		No longer used in current implementation.
+//
+// Notes:
+//		- File is effectively empty (whitespace only after includes)
+//		- Kept for historical/structural purposes
+//		- No active code or functions
+//		- Debug memory tracking macros present but unused
 //
 // Updates: (date) (person) (update)
 //
@@ -61,4 +73,6 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include <crtdbg.h>
 
 #define new new(_NORMAL_BLOCK,__FILE__, __LINE__)
+
+// [FILE CONTENTS REMOVED - PERFORMANCE MONITORING NOT IMPLEMENTED]
 

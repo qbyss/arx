@@ -41,6 +41,36 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //@@@    @@@  @@@ @@@@@                          @@            @@@                  //
 //            @@@ @@@                           @@             @@        STUDIOS    //
 //////////////////////////////////////////////////////////////////////////////////////
+// HERMESnet.cpp - Windows Registry Configuration Storage
+//////////////////////////////////////////////////////////////////////////////////////
+//
+// Description:
+//		Simple registry read/write utilities for storing HERMES configuration.
+//		Provides abstraction layer over Windows Registry API.
+//
+// Purpose:
+//		Originally intended for storing network/multiplayer configuration:
+//		- Server addresses
+//		- Player preferences
+//		- Game settings
+//		- Resource pack locations
+//
+// Functions:
+//		WriteRegKey() - Write string value to registry
+//		WriteRegKeyValue() - Write DWORD value to registry
+//		ReadRegKey() - Read string value from registry (with default)
+//		ReadRegKeyValue() - Read DWORD value from registry
+//
+// Notes:
+//		- Wraps Windows RegSetValueEx/RegQueryValueEx APIs
+//		- Minimal error handling (returns S_OK even on failure for ReadReg functions)
+//		- Uses TCHAR for potential Unicode support
+//		- Registry keys must be opened by caller (HKEY parameter)
+//
+// Code: Mickael Pointier/Cyril Meynier
+//
+// Copyright (c) 1999-2010 ARKANE Studios SA. All rights reserved
+//////////////////////////////////////////////////////////////////////////////////////
 
 #include <stdio.h>
 #include "HERMESnet.h"
@@ -51,10 +81,27 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include <crtdbg.h>
 
 
-//-----------------------------------------------------------------------------
-// Name: WriteRegKey()
-// Desc: Writes a registry key 
-//-----------------------------------------------------------------------------
+//=============================================================================
+// FUNCTION: WriteRegKey
+//=============================================================================
+// Description:
+//		Writes a string value to the Windows registry.
+//
+// Parameters:
+//		hKey - Open registry key handle (HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, etc.)
+//		strName - Value name to write
+//		strValue - String data to store
+//
+// Returns:
+//		S_OK - Value written successfully
+//		E_FAIL - Registry write failed
+//
+// Notes:
+//		- Stores as REG_SZ (null-terminated string)
+//		- Includes null terminator in stored data
+//		- Caller must open/close registry key
+//
+//=============================================================================
 HRESULT WriteRegKey( HKEY hKey, TCHAR* strName, TCHAR* strValue )
 {
 	LONG bResult;
@@ -67,6 +114,26 @@ HRESULT WriteRegKey( HKEY hKey, TCHAR* strName, TCHAR* strValue )
     return S_OK;
 }
 
+//=============================================================================
+// FUNCTION: WriteRegKeyValue
+//=============================================================================
+// Description:
+//		Writes a DWORD (32-bit integer) value to the Windows registry.
+//
+// Parameters:
+//		hKey - Open registry key handle
+//		strName - Value name to write
+//		val - DWORD value to store
+//
+// Returns:
+//		S_OK - Value written successfully
+//		E_FAIL - Registry write failed
+//
+// Notes:
+//		- Stores as REG_DWORD (4-byte integer)
+//		- Used for numeric settings (port numbers, flags, counts, etc.)
+//
+//=============================================================================
 HRESULT WriteRegKeyValue( HKEY hKey, TCHAR* strName, DWORD val )
 {
 	LONG bResult;
@@ -79,11 +146,29 @@ HRESULT WriteRegKeyValue( HKEY hKey, TCHAR* strName, DWORD val )
     return S_OK;
 }
 
-//-----------------------------------------------------------------------------
-// Name: ReadRegKey()
-// Desc: Read a registry key 
-//-----------------------------------------------------------------------------
-HRESULT ReadRegKey( HKEY hKey, TCHAR* strName, TCHAR* strValue, 
+//=============================================================================
+// FUNCTION: ReadRegKey
+//=============================================================================
+// Description:
+//		Reads a string value from the Windows registry with default fallback.
+//
+// Parameters:
+//		hKey - Open registry key handle
+//		strName - Value name to read
+//		strValue - Output buffer for string data
+//		dwLength - Size of output buffer in bytes
+//		strDefault - Default value if registry read fails
+//
+// Returns:
+//		S_OK - Always (even on failure, uses default)
+//
+// Notes:
+//		- Reads REG_SZ (null-terminated string) type
+//		- Fills buffer with strDefault if value doesn't exist or read fails
+//		- Always returns S_OK (minimal error handling)
+//
+//=============================================================================
+HRESULT ReadRegKey( HKEY hKey, TCHAR* strName, TCHAR* strValue,
                     DWORD dwLength, TCHAR* strDefault )
 {
 	DWORD dwType;
@@ -96,6 +181,28 @@ HRESULT ReadRegKey( HKEY hKey, TCHAR* strName, TCHAR* strValue,
 
     return S_OK;
 }
+
+//=============================================================================
+// FUNCTION: ReadRegKeyValue
+//=============================================================================
+// Description:
+//		Reads a DWORD value from the Windows registry.
+//
+// Parameters:
+//		hKey - Open registry key handle
+//		strName - Value name to read
+//		val - Output pointer for DWORD value
+//		defaultt - Default value (currently unused - bug)
+//
+// Returns:
+//		S_OK - Always (even on failure)
+//
+// Notes:
+//		- Reads REG_DWORD (4-byte integer) type
+//		- BUG: defaultt parameter unused, val not set on failure
+//		- Always returns S_OK regardless of success
+//
+//=============================================================================
 HRESULT ReadRegKeyValue( HKEY hKey, TCHAR* strName, long * val, long defaultt )
 {
 	DWORD dwType;

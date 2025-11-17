@@ -42,34 +42,121 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //            @@@ @@@                           @@             @@        STUDIOS    //
 //////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////
-// HERMESMain
+// HERMES_PAK.cpp - Virtual File System API (Disk Files + PAK Archives)
 //////////////////////////////////////////////////////////////////////////////////////
 //
 // Description:
-//		HUM...hum...
+//		Provides unified file I/O API that transparently accesses resources from
+//		either disk files OR PAK archives, with configurable fallback behavior.
 //
-// Updates: (date) (person) (update)
+// Purpose:
+//		Allows game to load resources from compressed PAK archives for release builds
+//		while supporting loose files on disk for development/modding.
+//		Provides seamless switching between file sources without code changes.
 //
-// Code: Sébastien Scieux
+// Architecture:
 //
-// Copyright (c) 1999 ARKANE Studios SA. All rights reserved
+//		PakManager - Multi-Archive Manager
+//			Manages collection of loaded PAK archives (vector<EVE_LOADPACK*>)
+//			Searches archives in order when looking up files
+//			Provides unified API for reading from any loaded PAK
+//
+//		Load Modes (CURRENT_LOADMODE):
+//			LOAD_TRUEFILE - Only load from disk files (development mode)
+//			LOAD_PACK - Only load from PAK archives (release mode)
+//			LOAD_PACK_THEN_TRUEFILE - Try PAK first, fall back to disk
+//			LOAD_TRUEFILE_THEN_PACK - Try disk first, fall back to PAK
+//
+//		File API Functions (PAK_* wrappers):
+//			All standard C file I/O functions have PAK_* equivalents:
+//			- PAK_fopen() / PAK_fclose() - Open/close files
+//			- PAK_fread() / PAK_fseek() / PAK_ftell() - Read/seek operations
+//			- PAK_FileExist() / PAK_DirectoryExist() - Existence checks
+//			- PAK_FileLoadMalloc() - Load entire file into memory
+//
+//		Internal Functions (_PAK_* helpers):
+//			Each PAK_* function has a _PAK_* helper that accesses PAK archives
+//			PAK_* functions switch between disk and _PAK_* based on CURRENT_LOADMODE
+//
+// Path Handling:
+//		PAK_WORKDIR prefix stripped from paths before PAK lookup
+//		Example: "c:\game\data\textures\wall.jpg" -> "textures\wall.jpg" in PAK
+//		Allows game to use absolute paths while PAK uses relative paths
+//
+// File Loading Modes:
+//		PAK_FileLoadMalloc() - Loads file, returns malloc'd buffer
+//		PAK_FileLoadMallocZero() - Same but adds 2 null bytes at end (for strings)
+//
+// Debugging:
+//		PAK_NotFoundInit() - Enable logging of missing files
+//		PAK_NotFound() - Log file access failures for debugging
+//		DrawDebugFile() - Debug visualization hook (disabled)
+//
+// Usage Pattern:
+//		1. PAK_SetLoadMode() - Configure load behavior and open PAK archives
+//		2. PAK_fopen() / PAK_FileLoadMalloc() - Load resources transparently
+//		3. PAK_Close() - Cleanup when shutting down
+//
+// Example:
+//		PAK_SetLoadMode(LOAD_TRUEFILE_THEN_PACK, "game.pak", "c:\\game\\data\\");
+//		FILE* f = PAK_fopen("textures\\wall.jpg", "rb");  // Tries disk, then PAK
+//		PAK_fread(buffer, 1, size, f);
+//		PAK_fclose(f);
+//		PAK_Close();
+//
+// Performance:
+//		PAK archives use hash tables for O(1) file lookups
+//		Multiple PAKs searched sequentially (first match wins)
+//		Working directory prefix stripped once (cached length)
+//
+// Force-In-Pack Mode:
+//		bForceInPack flag forces PAK-only access (ignores disk files)
+//		Used for DRM/anti-cheat to prevent file replacement
+//
+// Code: SÃ©bastien Scieux
+//
+// Copyright (c) 1999-2010 ARKANE Studios SA. All rights reserved
 //////////////////////////////////////////////////////////////////////////////////////
+
 #include "hermes_pak.h"
 #include "hermesmain.h"
 
 #define _CRTDBG_MAP_ALLOC
 #include <crtdbg.h>
 
-bool bForceInPack = false;
-long CURRENT_LOADMODE = LOAD_TRUEFILE;
+//#############################################################################
+//                             GLOBAL VARIABLES
+//#############################################################################
 
-PakManager * pPakManager = NULL;
+bool bForceInPack = false;				// Force PAK-only mode (disable disk file access)
+long CURRENT_LOADMODE = LOAD_TRUEFILE;	// Active load mode (see enum in header)
 
-char PAK_WORKDIR[256];
-ULONG g_pak_workdir_len = 0;
-char NOT_FOUND_FIC[256];
-long WRITE_NOT_FOUND = 0;
+PakManager * pPakManager = NULL;		// Global PAK manager singleton
 
+char PAK_WORKDIR[256];					// Working directory prefix to strip from paths
+ULONG g_pak_workdir_len = 0;			// Cached length of PAK_WORKDIR
+char NOT_FOUND_FIC[256];				// File path for logging missing files
+long WRITE_NOT_FOUND = 0;				// Flag: enable missing file logging
+
+//#############################################################################
+//                             DEBUG / LOGGING FUNCTIONS
+//#############################################################################
+
+//=============================================================================
+// FUNCTION: PAK_NotFoundInit
+//=============================================================================
+// Description:
+//		Initializes missing file logging system.
+//
+// Parameters:
+//		fich - Path to log file where missing files will be written
+//
+// Notes:
+//		- Creates/overwrites log file
+//		- Sets WRITE_NOT_FOUND flag if file creation succeeds
+//		- Used for debugging resource loading issues
+//
+//=============================================================================
 void PAK_NotFoundInit(char * fich)
 {
 	strcpy(NOT_FOUND_FIC, fich);
@@ -83,6 +170,8 @@ void PAK_NotFoundInit(char * fich)
 	else WRITE_NOT_FOUND = 0;
 }
 
+// PAK_NotFound - Log missing file to debug log
+//		Returns true if logged successfully
 bool PAK_NotFound(char * fich)
 {
 	FILE * fic;
@@ -100,6 +189,28 @@ bool PAK_NotFound(char * fich)
 	return false;
 }
 
+//#############################################################################
+//                             INITIALIZATION FUNCTIONS
+//#############################################################################
+
+//=============================================================================
+// FUNCTION: PAK_SetLoadMode
+//=============================================================================
+// Description:
+//		Configures resource loading mode and initializes PAK archives.
+//
+// Parameters:
+//		mode - Load mode (LOAD_TRUEFILE, LOAD_PACK, LOAD_*_THEN_*, etc.)
+//		pakfile - Path to PAK archive to load
+//		workdir - Working directory prefix to strip from paths
+//
+// Notes:
+//		- Always sets mode to LOAD_TRUEFILE_THEN_PACK (hardcoded override)
+//		- Creates PakManager if it doesn't exist
+//		- Removes and re-adds PAK to ensure clean state
+//		- Caches working directory length for performance
+//
+//=============================================================================
 void PAK_SetLoadMode(long mode, char * pakfile, char * workdir)
 {
 
@@ -129,13 +240,25 @@ void PAK_SetLoadMode(long mode, char * pakfile, char * workdir)
 
 }
 
+// PAK_Close - Shutdown PAK system and free resources
+//		Deletes PakManager and all loaded PAK archives
 void PAK_Close()
 {
 	if (pPakManager) delete pPakManager;
 
 	pPakManager = NULL;
 }
- 
+
+//#############################################################################
+//                    INTERNAL HELPER FUNCTIONS (_PAK_*)
+//		These functions access PAK archives directly (no disk fallback)
+//		Called by public PAK_* functions based on CURRENT_LOADMODE
+//#############################################################################
+
+// _PAK_FileLoadMallocZero - Load file from PAK with null termination
+//		Allocates buffer, reads file, adds 2 null bytes at end
+//		Returns buffer pointer or NULL if not found
+//		Strips PAK_WORKDIR prefix from path
 void * _PAK_FileLoadMallocZero(char * name, long * SizeLoadMalloc)
 {
 #ifdef TEST_PACK_EDITOR
@@ -173,6 +296,9 @@ void * _PAK_FileLoadMallocZero(char * name, long * SizeLoadMalloc)
 		return NULL;
 	}
 }
+
+// _PAK_FileLoadMalloc - Load file from PAK (no null termination)
+//		Logs to PAK_NotFound if file not in any loaded PAK
 void * _PAK_FileLoadMalloc(char * name, long * SizeLoadMalloc)
 {
 #ifdef TEST_PACK_EDITOR
@@ -196,6 +322,10 @@ void * _PAK_FileLoadMalloc(char * name, long * SizeLoadMalloc)
 
 	return mem;
 }
+
+// _PAK_DirectoryExist - Check if directory exists in any loaded PAK
+//		Searches all PAK archives for matching directory
+//		Returns true if found in at least one PAK
 long _PAK_DirectoryExist(char * name)
 {
 #ifdef TEST_PACK_EDITOR
@@ -230,6 +360,18 @@ long _PAK_DirectoryExist(char * name)
 	return true;
 }
 
+//#############################################################################
+//                    PUBLIC API FUNCTIONS (PAK_*)
+//		All functions follow same pattern:
+//		- Switch on CURRENT_LOADMODE to determine source priority
+//		- LOAD_TRUEFILE: Disk only
+//		- LOAD_PACK: PAK only
+//		- LOAD_PACK_THEN_TRUEFILE: Try PAK, fallback to disk
+//		- LOAD_TRUEFILE_THEN_PACK: Try disk, fallback to PAK
+//		- bForceInPack flag forces PAK-only access in TRUEFILE_THEN_PACK mode
+//#############################################################################
+
+// PAK_DirectoryExist - Check if directory exists (disk or PAK based on mode)
 long PAK_DirectoryExist(char * name)
 {
 #ifdef TEST_PACK_EDITOR
@@ -273,6 +415,7 @@ long PAK_DirectoryExist(char * name)
 	return ret;
 }
 
+// _PAK_FileExist - Check if file exists in any loaded PAK archive
 long _PAK_FileExist(char * name)
 {
 #ifdef TEST_PACK_EDITOR
@@ -294,9 +437,7 @@ long _PAK_FileExist(char * name)
 	return 0;
 }
 
-
-
-
+// PAK_FileExist - Check if file exists (disk or PAK based on mode)
 long PAK_FileExist(char * name)
 {
 #ifdef TEST_PACK_EDITOR
@@ -339,6 +480,7 @@ long PAK_FileExist(char * name)
 	return ret;
 }
 
+// PAK_FileLoadMalloc - Load entire file into malloc'd buffer (disk or PAK)
 void * PAK_FileLoadMalloc(char * name, long * SizeLoadMalloc)
 {
 #ifdef TEST_PACK_EDITOR
@@ -383,6 +525,7 @@ void * PAK_FileLoadMalloc(char * name, long * SizeLoadMalloc)
 	return ret;
 }
 
+// PAK_FileLoadMallocZero - Load file with null termination (+2 bytes for strings)
 void * PAK_FileLoadMallocZero(char * name, long * SizeLoadMalloc)
 {
 #ifdef TEST_PACK_EDITOR
@@ -427,12 +570,21 @@ void * PAK_FileLoadMallocZero(char * name, long * SizeLoadMalloc)
 	return ret;
 }
 
+//#############################################################################
+//                    FILE I/O WRAPPERS (fopen, fclose, fread, etc.)
+//		These functions provide drop-in replacements for standard C file I/O
+//		Can work with both real FILE* and virtual PACK_FILE* handles
+//#############################################################################
+
 long PAK_ftell(FILE * stream);
 
+// _PAK_ftell - Get current position in PAK file
 long _PAK_ftell(FILE * stream)
 {
 	return pPakManager->fTell((PACK_FILE *)stream);
 }
+
+// PAK_ftell - Get file position (disk or PAK based on mode)
 long PAK_ftell(FILE * stream)
 {
 #ifdef TEST_PACK_EDITOR
@@ -473,7 +625,8 @@ long PAK_ftell(FILE * stream)
 	return ret;
 }
 
-
+// _PAK_fopen - Open file from PAK archive
+//		Returns PACK_FILE* cast to FILE* for transparent usage
 FILE * _PAK_fopen(const char * filename, const char * mode)
 {
 #ifdef TEST_PACK_EDITOR
@@ -489,6 +642,7 @@ FILE * _PAK_fopen(const char * filename, const char * mode)
 	return (FILE *)pPakManager->fOpen((char *)(filename + g_pak_workdir_len));
 }
 
+// PAK_fopen - Open file (disk or PAK based on mode)
 FILE * PAK_fopen(const char * filename, const char * mode)
 {
 #ifdef TEST_PACK_EDITOR
@@ -532,11 +686,13 @@ FILE * PAK_fopen(const char * filename, const char * mode)
 	return ret;
 }
 
+// _PAK_fclose - Close file in PAK archive
 int _PAK_fclose(FILE * stream)
 {
 	return pPakManager->fClose((PACK_FILE *)stream);
 }
 
+// PAK_fclose - Close file (disk or PAK based on mode)
 int PAK_fclose(FILE * stream)
 {
 #ifdef TEST_PACK_EDITOR
@@ -577,11 +733,13 @@ int PAK_fclose(FILE * stream)
 	return ret;
 }
 
+// _PAK_fread - Read data from PAK file
 size_t _PAK_fread(void * buffer, size_t size, size_t count, FILE * stream)
 {
 	return pPakManager->fRead(buffer, size, count, (PACK_FILE *)stream);
 }
 
+// PAK_fread - Read data from file (disk or PAK based on mode)
 size_t PAK_fread(void * buffer, size_t size, size_t count, FILE * stream)
 {
 #ifdef TEST_PACK_EDITOR
@@ -622,12 +780,13 @@ size_t PAK_fread(void * buffer, size_t size, size_t count, FILE * stream)
 	return ret;
 }
 
-
+// _PAK_fseek - Seek to position in PAK file
 int _PAK_fseek(FILE * fic, long offset, int origin)
 {
 	return pPakManager->fSeek((PACK_FILE *)fic, offset, origin);
 }
 
+// PAK_fseek - Seek in file (disk or PAK based on mode)
 int PAK_fseek(FILE * fic, long offset, int origin)
 {
 #ifdef TEST_PACK_EDITOR
@@ -668,13 +827,21 @@ int PAK_fseek(FILE * fic, long offset, int origin)
 	return ret;
 }
 
-//-----------------------------------------------------------------------------
+//#############################################################################
+//#############################################################################
+//                             PakManager Class
+//#############################################################################
+//#############################################################################
+
+// PakManager::PakManager - Constructor
+//		Initializes empty PAK collection
 PakManager::PakManager()
 {
 	vLoadPak.clear();
 }
 
-//-----------------------------------------------------------------------------
+// PakManager::~PakManager - Destructor
+//		Closes and deletes all loaded PAK archives
 PakManager::~PakManager()
 {
 	vector<EVE_LOADPACK *>::iterator i;
@@ -687,7 +854,26 @@ PakManager::~PakManager()
 	vLoadPak.clear();
 }
 
-//-----------------------------------------------------------------------------
+//=============================================================================
+// FUNCTION: PakManager::AddPak
+//=============================================================================
+// Description:
+//		Loads a PAK archive and adds it to the collection.
+//
+// Parameters:
+//		_lpszName - Path to PAK file to load
+//
+// Returns:
+//		true - PAK loaded successfully
+//		false - PAK failed to load (file not found or corrupted)
+//
+// Notes:
+//		- Creates new EVE_LOADPACK instance
+//		- Opens PAK and parses directory tree
+//		- Adds to vector for subsequent searches
+//		- Later PAKs in vector are searched before earlier ones
+//
+//=============================================================================
 bool PakManager::AddPak(char * _lpszName)
 {
 	EVE_LOADPACK * pLoadPak = new EVE_LOADPACK();
@@ -703,7 +889,8 @@ bool PakManager::AddPak(char * _lpszName)
 	return true;
 }
 
-//-----------------------------------------------------------------------------
+// PakManager::RemovePak - Remove PAK from collection by name
+//		Searches for PAK with matching filename, deletes and removes from vector
 bool PakManager::RemovePak(char * _lpszName)
 {
 	vector<EVE_LOADPACK *>::iterator i;
@@ -726,14 +913,15 @@ bool PakManager::RemovePak(char * _lpszName)
 	return false;
 }
 
-//-----------------------------------------------------------------------------
+// DrawDebugFile - Debug hook for visualizing file accesses (disabled)
 static void DrawDebugFile(char * _lpszName)
 {
 	return;
 
 }
 
-//-----------------------------------------------------------------------------
+// PakManager::Read - Read file from any loaded PAK into pre-allocated buffer
+//		Searches all PAKs in order, returns true if found and read successfully
 bool PakManager::Read(char * _lpszName, void * _pMem)
 {
 	vector<EVE_LOADPACK *>::iterator i;
@@ -757,7 +945,8 @@ bool PakManager::Read(char * _lpszName, void * _pMem)
 	return false;
 }
 
-//-----------------------------------------------------------------------------
+// PakManager::ReadAlloc - Read file and allocate buffer automatically
+//		Searches all PAKs, allocates buffer, reads file, returns buffer pointer
 void * PakManager::ReadAlloc(char * _lpszName, int * _piTaille)
 {
 	vector<EVE_LOADPACK *>::iterator i;
@@ -782,7 +971,8 @@ void * PakManager::ReadAlloc(char * _lpszName, int * _piTaille)
 	return NULL;
 }
 
-//-----------------------------------------------------------------------------
+// PakManager::GetSize - Get file size from any loaded PAK
+//		Returns size in bytes if found, -1 if not found
 int PakManager::GetSize(char * _lpszName)
 {
 	vector<EVE_LOADPACK *>::iterator i;
@@ -807,7 +997,8 @@ int PakManager::GetSize(char * _lpszName)
 	return -1;
 }
 
-//-----------------------------------------------------------------------------
+// PakManager::fOpen - Open file from any loaded PAK
+//		Returns PACK_FILE handle for subsequent fRead/fSeek/fClose operations
 PACK_FILE * PakManager::fOpen(char * _lpszName)
 {
 	vector<EVE_LOADPACK *>::iterator i;
@@ -832,7 +1023,8 @@ PACK_FILE * PakManager::fOpen(char * _lpszName)
 	return NULL;
 }
 
-//-----------------------------------------------------------------------------
+// PakManager::fClose - Close PACK_FILE handle
+//		Searches all PAKs for matching handle, closes if found
 int PakManager::fClose(PACK_FILE * _pPakFile)
 {
 	vector<EVE_LOADPACK *>::iterator i;
@@ -849,7 +1041,8 @@ int PakManager::fClose(PACK_FILE * _pPakFile)
 	return EOF;
 }
 
-//-----------------------------------------------------------------------------
+// PakManager::fRead - Read data from PACK_FILE
+//		Delegates to appropriate EVE_LOADPACK based on file handle
 int PakManager::fRead(void * _pMem, int _iSize, int _iCount, PACK_FILE * _pPackFile)
 {
 	vector<EVE_LOADPACK *>::iterator i;
@@ -867,7 +1060,7 @@ int PakManager::fRead(void * _pMem, int _iSize, int _iCount, PACK_FILE * _pPackF
 	return 0;
 }
 
-//-----------------------------------------------------------------------------
+// PakManager::fSeek - Seek to position in PACK_FILE
 int PakManager::fSeek(PACK_FILE * _pPackFile, int _iSeek, int _iMode)
 {
 	vector<EVE_LOADPACK *>::iterator i;
@@ -883,7 +1076,7 @@ int PakManager::fSeek(PACK_FILE * _pPackFile, int _iSeek, int _iMode)
 	return 1;
 }
 
-//-----------------------------------------------------------------------------
+// PakManager::fTell - Get current position in PACK_FILE
 int PakManager::fTell(PACK_FILE * _pPackFile)
 {
 	vector<EVE_LOADPACK *>::iterator i;
@@ -901,7 +1094,21 @@ int PakManager::fTell(PACK_FILE * _pPackFile)
 	return -1;
 }
 
-//-----------------------------------------------------------------------------
+//=============================================================================
+// FUNCTION: PakManager::ExistDirectory
+//=============================================================================
+// Description:
+//		Checks if directory exists in any loaded PAK.
+//
+// Returns:
+//		Vector of matching EVE_REPERTOIRE pointers from all PAKs
+//		Empty vector if directory not found
+//
+// Notes:
+//		- Caller must delete returned vector
+//		- May return multiple results if same path in multiple PAKs
+//
+//=============================================================================
 vector<EVE_REPERTOIRE *>* PakManager::ExistDirectory(char * _lpszName)
 {
 	vector<EVE_LOADPACK *>::iterator i;
@@ -927,7 +1134,29 @@ vector<EVE_REPERTOIRE *>* PakManager::ExistDirectory(char * _lpszName)
 	return pvRepertoire;
 }
 
-//-----------------------------------------------------------------------------
+//=============================================================================
+// FUNCTION: PakManager::ExistFile
+//=============================================================================
+// Description:
+//		Checks if file exists in any loaded PAK.
+//
+// Returns:
+//		true - File found in at least one PAK
+//		false - File not found in any PAK
+//
+// Algorithm:
+//		1. Extract directory path and filename from full path
+//		2. For each loaded PAK:
+//		   a. Find directory in PAK's tree
+//		   b. Search directory's hash table for filename
+//		   c. Return true if found
+//		3. Return false if not found in any PAK
+//
+// Notes:
+//		- Uses hash table for O(1) filename lookup within directory
+//		- Searches PAKs in order (first match wins)
+//
+//=============================================================================
 bool PakManager::ExistFile(char * _lpszName)
 {
 	vector<EVE_LOADPACK *>::iterator i;

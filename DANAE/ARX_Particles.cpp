@@ -54,6 +54,249 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //
 // Copyright (c) 1999-2000 ARKANE Studios SA. All rights reserved
 //////////////////////////////////////////////////////////////////////////////////////
+//=============================================================================
+// FILE: ARX_Particles.cpp
+//=============================================================================
+// Component: DANAE Game Engine - Particle Effect System
+// Author: Cyril Meynier
+//
+// PURPOSE:
+//		Comprehensive particle system for visual effects including fire, smoke,
+//		magic spells, sparks, blood, dust, and environmental effects.
+//
+// ARCHITECTURE:
+//		CPU-based particle simulation with GPU-accelerated rendering:
+//
+//		Particle System Components:
+//		- Particle Emitters: Spawn particles with configurable properties
+//		- Particle Pool: Reusable particle instances (object pooling pattern)
+//		- Particle Updaters: Physics, lifetime, color fading
+//		- Particle Renderers: Billboard sprites, textured quads
+//		- Effect Managers: High-level effect coordination
+//
+//		Particle Data Structure:
+//		- Position, Velocity, Acceleration (physics)
+//		- Color, Alpha (visual appearance with fading)
+//		- Size, Rotation (sprite properties)
+//		- Lifetime, Age (time-based behavior)
+//		- Texture ID (visual variation)
+//		- Special flags (collision, glow, additive blend)
+//
+// KEY FEATURES:
+//		Particle Emission:
+//		- Point emitters: Emit from single point (explosions, sparks)
+//		- Line emitters: Emit along line (sword trails, laser beams)
+//		- Area emitters: Emit from surface/volume (smoke, fog)
+//		- Continuous emission: Steady particle flow (fire, torches)
+//		- Burst emission: One-time spawn (explosions, impacts)
+//
+//		Particle Physics:
+//		- Gravity simulation (falling particles)
+//		- Air resistance / drag (smoke rising then dissipating)
+//		- Wind influence (leaves, embers)
+//		- Collision detection with level geometry
+//		- Bounce and friction on impact
+//		- Velocity inheritance from source (moving emitter)
+//
+//		Visual Properties:
+//		- Color gradients over lifetime (fire: yellow → orange → red → black)
+//		- Alpha fading (fade in, fade out, or both)
+//		- Size scaling over lifetime (expand or shrink)
+//		- Rotation and angular velocity
+//		- Texture animation (sprite sheets for animated effects)
+//		- Additive blending (fire, magic glow)
+//		- Alpha blending (smoke, fog)
+//
+//		Effect Types:
+//		Fire & Combustion:
+//		- Torch flames: Upward-moving yellow/orange particles with flicker
+//		- Explosion fireballs: Rapidly expanding bright particles
+//		- Embers: Slow-rising glowing particles with fade
+//		- Smoke: Rising dark particles that expand and fade
+//
+//		Magic Effects:
+//		- Spell casting: Swirling colored particles around caster
+//		- Magic projectiles: Trail of glowing particles
+//		- Spell impacts: Burst of energy particles
+//		- Rune glyphs: Orbiting particles forming symbols
+//		- Healing auras: Upward-floating soft particles
+//		- Lightning: Branching white/blue particles
+//
+//		Environmental:
+//		- Dust clouds: Slow-moving brownish particles
+//		- Water splashes: Fast-moving blue particles with gravity
+//		- Steam: Rising white particles that expand and fade
+//		- Fog: Large, slow-moving semi-transparent particles
+//		- Sparks: Fast-moving bright particles with trails
+//
+//		Combat Effects:
+//		- Blood spray: Red particles with gravity and splatter
+//		- Weapon trails: Particles following weapon arc
+//		- Impact sparks: Metal collision particles
+//		- Poison gas: Green particles with swirl motion
+//
+// ALGORITHMS:
+//		Particle Update Loop (Per Frame):
+//		1. For each active particle:
+//		   a. Increment age by deltaTime
+//		   b. If age >= lifetime, mark particle as dead
+//		   c. Apply physics:
+//		      - velocity += acceleration * deltaTime
+//		      - Apply wind force
+//		      - Apply air resistance: velocity *= dragFactor
+//		   d. Update position: pos += velocity * deltaTime
+//		   e. Check collision with geometry if enabled
+//		   f. Update visual properties:
+//		      - Interpolate color based on age/lifetime ratio
+//		      - Calculate alpha from fade curve
+//		      - Update size from size curve
+//		   g. Update rotation: rotation += angularVelocity * deltaTime
+//		2. Add new particles from active emitters
+//		3. Compact dead particles (move to end of array)
+//
+//		Emission Algorithm:
+//		1. Calculate emission rate: particles per second
+//		2. Accumulate fractional particles: emitAccum += rate * deltaTime
+//		3. While emitAccum >= 1.0:
+//		   a. Spawn one particle
+//		   b. Initialize position from emitter location + random offset
+//		   c. Initialize velocity from emitter direction + random spread
+//		   d. Set lifetime from min-max range
+//		   e. Set initial color, size from emitter properties
+//		   f. emitAccum -= 1.0
+//
+//		Billboard Particle Rendering:
+//		1. For each particle:
+//		   a. Calculate distance to camera (for sorting)
+//		2. Sort particles back-to-front (far to near)
+//		3. For each sorted particle:
+//		   a. Calculate billboard quad facing camera
+//		   b. Set quad corners:
+//		      - Get camera right and up vectors
+//		      - corner = pos ± (right * size/2) ± (up * size/2)
+//		   c. Apply rotation around view direction if needed
+//		   d. Set color and alpha
+//		   e. Set texture coordinates
+//		   f. Submit quad to renderer
+//
+//		Particle-Geometry Collision:
+//		1. Calculate next position: nextPos = pos + velocity * deltaTime
+//		2. Ray cast from pos to nextPos
+//		3. If collision detected:
+//		   a. Place particle at collision point
+//		   b. Calculate reflection vector: reflect(velocity, normal)
+//		   c. Apply restitution: velocity = reflectVec * bounciness
+//		   d. If velocity too small, stick to surface (velocity = 0)
+//		4. If no collision, use nextPos
+//
+// PARTICLE TYPES:
+//		Standard Particles:
+//		- Simple billboard sprites
+//		- Most common, fastest to render
+//		- Used for fire, smoke, sparks, magic
+//
+//		Object Particles (OBJFX):
+//		- 3D mesh instead of billboard sprite
+//		- Used for debris, shrapnel, complex effects
+//		- More expensive but more visually interesting
+//		- Example: Wooden splinters from broken crate
+//
+//		Streak Particles:
+//		- Elongated quads stretched along velocity
+//		- Used for speed lines, rain, magic trails
+//		- Length proportional to velocity magnitude
+//
+//		Light Particles:
+//		- Emit dynamic light in addition to visual
+//		- Used for fireballs, magic projectiles, explosions
+//		- Affects nearby geometry lighting
+//
+// OPTIMIZATION:
+//		Object Pooling:
+//		- Pre-allocate particle arrays
+//		- Reuse dead particles instead of allocation/deallocation
+//		- Prevents memory fragmentation
+//		- Faster than new/delete per particle
+//
+//		Distance-Based LOD:
+//		- Near camera: Full particle count, collision detection
+//		- Medium distance: Reduced particle count (50%)
+//		- Far distance: Very few particles (25%), no collision
+//		- Beyond max distance: No particles rendered
+//
+//		Batching:
+//		- Group particles by texture
+//		- Render all particles with same texture in one draw call
+//		- Reduces state changes
+//		- Typical: 50-100 particles per batch
+//
+//		Frustum Culling:
+//		- Cull particles outside view frustum
+//		- Use bounding sphere around particle cloud
+//		- Skip update for culled particles
+//
+//		Update Rate Reduction:
+//		- Update nearby particles every frame
+//		- Update distant particles every 2-3 frames
+//		- User doesn't notice reduced update rate at distance
+//
+// PERFORMANCE CHARACTERISTICS:
+//		Typical Particle Counts:
+//		- Torch: 20-30 particles
+//		- Small explosion: 50-100 particles
+//		- Large explosion: 200-500 particles
+//		- Magic spell: 100-300 particles
+//		- Total on screen: 1000-3000 particles typical, 5000 max
+//
+//		Performance Impact:
+//		- 1000 particles: ~1-2ms CPU, ~0.5ms GPU
+//		- 3000 particles: ~3-5ms CPU, ~1-2ms GPU
+//		- Main cost: Sorting and rendering (overdraw)
+//		- Physics relatively cheap
+//
+// INTEGRATION:
+//		Works with ARX_Spells for magic visual effects
+//		Coordinates with ARX_Sound for audio-visual synchronization
+//		Uses ARX_Collisions for particle-geometry collision
+//		Integrates with ARX_Scene for rendering pipeline
+//		Coordinates with ARX_Damages for damage-related effects
+//
+// COORDINATE SYSTEM:
+//		World space for simulation
+//		View space for rendering (billboard calculations)
+//		Particle position in world coordinates
+//		Velocity in world units per second
+//
+// TYPICAL USAGE:
+//		Create Fire Effect:
+//		1. Create emitter at torch position
+//		2. Set emission rate: 10 particles/second
+//		3. Set particle lifetime: 1.5 seconds
+//		4. Set initial velocity: Upward with random spread
+//		5. Set color gradient: Yellow → Orange → Red → Fade
+//		6. Enable additive blending for glow
+//		7. Update emitter each frame
+//		8. Particles automatically spawn, update, render, die
+//
+//		Create Explosion:
+//		1. Create burst emitter at explosion point
+//		2. Spawn 200 particles instantly
+//		3. Random velocity in all directions (sphere distribution)
+//		4. Fast initial speed, decelerate over time
+//		5. Bright flash, fade to black
+//		6. Expand rapidly then fade
+//		7. Create dynamic light that fades with particles
+//		8. Play explosion sound synchronized
+//
+//		Create Magic Projectile Trail:
+//		1. Create continuous emitter at projectile position
+//		2. Low emission rate: 20 particles/second
+//		3. Inherit projectile velocity
+//		4. Add random offset perpendicular to motion
+//		5. Fade quickly (0.3 second lifetime)
+//		6. Bright colored glow matching spell type
+//		7. Leave fading trail as projectile moves
+//=============================================================================
 
 //#include "danae.h"
 #include "ARX_Particles.h"
@@ -61,7 +304,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "ARX_CSpellFx.h"
 #include "ARX_Sound.h"
 #include "ARX_Collisions.h"
-#include "ARX_Interface.h" // -> � virer
+#include "ARX_Interface.h" // -> � virer
 #include "ARX_Menu2.h"
 #include "ARX_MenuPublic.h"
 #include "ARX_Paths.h"

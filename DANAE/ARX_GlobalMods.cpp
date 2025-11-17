@@ -22,6 +22,71 @@ If you have questions concerning this license or the applicable additional terms
 ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 ===========================================================================
 */
+//=============================================================================
+// FILE: ARX_GlobalMods.cpp
+//=============================================================================
+// Component: DANAE Game Engine - Global Rendering Modifiers
+// Author: Cyril Meynier
+//
+// PURPOSE:
+//		Manages global rendering parameters including fog, depth clipping,
+//		and atmospheric color tinting. Provides smooth transitions between
+//		different rendering states.
+//
+// ARCHITECTURE:
+//		Triple-buffer state system (current, desired, stacked):
+//		- current: Currently active rendering state
+//		- desired: Target state to transition toward
+//		- stacked: Saved state for temporary overrides
+//
+// KEY FEATURES:
+//		Global Modifiers (GLOBAL_MODS):
+//		- zclip: Far clipping plane distance (view distance)
+//		- depthcolor: RGB tint for distance fog color
+//		- flags: Active modifiers (GMOD_ZCLIP, GMOD_DCOLOR)
+//
+//		Smooth Transitions:
+//		- Approach() function: Smoothly interpolates current → desired
+//		- Frame-based increment: Change per frame based on deltaTime
+//		- Prevents jarring visual changes
+//		- Used for fog fade-in/fade-out, view distance changes
+//
+//		D3D Fog Integration:
+//		- Linear fog mode support
+//		- Table fog (hardware) vs vertex fog (software)
+//		- ATI compatibility mode
+//		- Fog color matches depth color
+//		- Fog start/end based on clipping distance
+//
+// ALGORITHMS:
+//		Approach Algorithm (Smooth Interpolation):
+//		if (desired > current):
+//		  current += increment
+//		  if (current > desired): current = desired
+//		else if (desired < current):
+//		  current -= increment
+//		  if (current < desired): current = desired
+//		Return: Smoothly approaches target without overshooting
+//
+//		Apply Modifiers (Each Frame):
+//		1. If GMOD_ZCLIP: Approach current.zclip → desired.zclip
+//		2. Else: Approach current.zclip → DEFAULT_ZCLIP
+//		3. If GMOD_DCOLOR: Approach current.color → desired.color
+//		4. Else: Approach current.color → (0,0,0)
+//		5. Update camera far plane with current.zclip
+//		6. Update D3D fog with current.depthcolor
+//
+// DEFAULTS:
+//		DEFAULT_ZCLIP: 6400 units (far plane)
+//		DEFAULT_MINZCLIP: 1200 units (minimum far plane)
+//		Default fog color: (0, 0, 0) - black
+//
+// USE CASES:
+//		1. Underwater: Blue tint, shorter view distance
+//		2. Fog area: White/gray tint, very short view distance
+//		3. Clear area: No tint, long view distance
+//		4. Night: Dark blue tint, medium view distance
+//=============================================================================
 #include "ARX_GlobalMods.h"
 #include "EERIEMath.h"
 #include "arx_menu2.h"
@@ -151,7 +216,7 @@ void ARX_GLOBALMODS_Apply()
 
 		ulBKGColor = D3DRGB(current.depthcolor.r, current.depthcolor.g, current.depthcolor.b);
 		
-		//pour compatibilit� ATI, etc...
+		//pour compatibilit� ATI, etc...
 		GDevice->SetRenderState(D3DRENDERSTATE_FOGCOLOR, ulBKGColor);
 		float zval;
 

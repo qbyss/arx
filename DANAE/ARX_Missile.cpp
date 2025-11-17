@@ -30,6 +30,194 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 // Copyright (c) 1999-2001 ARKANE Studios SA. All rights reserved
 //
 ///////////////////////////////////////////////////////////////////////////////
+//=============================================================================
+// FILE: ARX_Missile.cpp
+//=============================================================================
+// Component: DANAE Game Engine - Projectile/Missile System
+// Author: Cyril Meynier
+//
+// PURPOSE:
+//		Manages flying projectiles including arrows, magic bolts, thrown objects.
+//		Handles trajectory calculation, collision detection, and impact effects.
+//
+// ARCHITECTURE:
+//		Pooled projectile system with physics simulation:
+//
+//		Missile Types:
+//		- MISSILE_NONE: Empty slot (available)
+//		- MISSILE_ARROW: Physical arrow from bow/crossbow
+//		- MISSILE_FIREBALL: Magic fireball projectile
+//		- MISSILE_MAGIC_MISSILE: Guided magic projectile
+//		- MISSILE_ICE: Ice shard projectile
+//		- MISSILE_POISON: Poison bolt
+//
+//		Missile Data Structure (ARX_MISSILE):
+//		- type: Missile type identifier
+//		- startpos: Initial launch position
+//		- velocity: Current velocity vector
+//		- lastpos: Previous frame position (for collision line)
+//		- timecreation: When missile was spawned
+//		- lastupdate: Last update timestamp
+//		- tolive: Remaining lifetime in milliseconds
+//		- longinfo: Extra data (e.g., dynamic light index)
+//		- owner: Who launched the missile (for damage attribution)
+//
+// KEY FEATURES:
+//		Missile Pool Management:
+//		- Fixed pool of MAX_MISSILES slots (typically 100)
+//		- ARX_MISSILES_GetFree: Find available slot
+//		- Reuse slots when missiles expire or hit
+//		- Prevents memory allocation during gameplay
+//
+//		Physics Simulation:
+//		- Position integration: pos += velocity * deltaTime
+//		- Gravity application: velocity.y += gravity * deltaTime
+//		- Air resistance (optional): velocity *= dragFactor
+//		- Wind influence for arrows
+//		- Curved trajectories for magic projectiles
+//
+//		Collision Detection:
+//		- Line segment test from lastpos to current pos
+//		- Check against level geometry (walls, floors)
+//		- Check against NPCs and interactive objects
+//		- Player collision for enemy missiles
+//		- First hit wins (stop missile on impact)
+//
+//		Impact Handling:
+//		- Damage application to hit target
+//		- Particle effects (sparks, blood, magic flash)
+//		- Sound effects (impact sound)
+//		- Decals (arrow sticking in wall, scorch marks)
+//		- Missile removal or transformation (arrow → stuck arrow)
+//
+//		Visual Effects:
+//		- Particle trails (magic glow, smoke)
+//		- Dynamic lights (fireball illumination)
+//		- Motion blur for fast projectiles
+//		- Rotation animation (spinning arrow)
+//
+// ALGORITHMS:
+//		Missile Update Loop (Each Frame):
+//		For each active missile (type != MISSILE_NONE):
+//		1. Calculate deltaTime since lastupdate
+//		2. Check lifetime: If expired, kill missile
+//		3. Store current position as lastpos
+//		4. Apply physics:
+//		   - velocity.y += gravity * deltaTime (arrows only)
+//		   - For magic: Apply homing behavior toward target
+//		5. Update position: pos += velocity * deltaTime
+//		6. Collision detection:
+//		   - Line from lastpos to pos
+//		   - Check geometry collision
+//		   - Check entity collision
+//		   - If hit: Handle impact, kill missile
+//		7. Update visual effects:
+//		   - Move dynamic light to new position
+//		   - Emit trail particles
+//		   - Update rotation
+//		8. Update lastupdate timestamp
+//
+//		Arrow Physics:
+//		Initial Velocity = LaunchDirection * BowPower
+//		Each Frame:
+//		  velocity.y += -9.8 * deltaTime (gravity)
+//		  pos += velocity * deltaTime
+//		  Rotate arrow to face velocity direction
+//
+//		Result: Parabolic arc trajectory
+//
+//		Fireball Homing (Magic Missile):
+//		1. Find target position
+//		2. Calculate direction from missile to target
+//		3. Blend current velocity with target direction:
+//		   - newVelocity = velocity * 0.9 + targetDir * speed * 0.1
+//		4. Maintains speed while curving toward target
+//		5. Result: Gentle homing, not instant lock-on
+//
+//		Collision Line Test:
+//		1. Create line segment: lastpos → currentpos
+//		2. For each potential target:
+//		   a. Get target bounding volume (cylinder/sphere)
+//		   b. Test if line intersects volume
+//		   c. If intersect: Calculate exact impact point
+//		3. Find closest intersection point
+//		4. If collision found:
+//		   - Place missile at impact point
+//		   - Calculate damage
+//		   - Apply damage to target
+//		   - Trigger impact effects
+//		   - Kill missile
+//
+// MISSILE CREATION:
+//		ARX_MISSILES_Spawn:
+//		1. Call ARX_MISSILES_GetFree to get slot index
+//		2. If no free slot: Fail (max missiles active)
+//		3. Initialize missile data:
+//		   - type = MISSILE_ARROW (or other type)
+//		   - startpos = archer position
+//		   - velocity = aimDirection * arrowSpeed
+//		   - timecreation = current time
+//		   - tolive = 10000ms (10 seconds)
+//		   - owner = archer entity ID
+//		4. For fireballs: Create dynamic light
+//		   - Store light index in longinfo
+//		5. Spawn initial particle effects
+//		6. Play launch sound
+//
+// MISSILE TYPES DETAILS:
+//		MISSILE_ARROW:
+//		- Physics: Full gravity, air resistance
+//		- Speed: 800-1200 units/second (depends on bow)
+//		- Lifetime: 10 seconds
+//		- On hit: Stick in target or wall
+//		- Damage: 15-40 (weapon dependent)
+//		- Visual: 3D arrow model, rotation
+//
+//		MISSILE_FIREBALL:
+//		- Physics: No gravity, constant speed
+//		- Speed: 400-600 units/second
+//		- Lifetime: 5 seconds
+//		- On hit: Explosion, fire damage over time
+//		- Damage: 40-80 fire damage
+//		- Visual: Glowing sphere, particle trail, dynamic light
+//
+//		MISSILE_MAGIC_MISSILE:
+//		- Physics: Light homing toward target
+//		- Speed: 500 units/second
+//		- Lifetime: 8 seconds
+//		- On hit: Magic burst effect
+//		- Damage: 25-45 magic damage
+//		- Visual: Colored energy bolt, sparkles
+//
+// PERFORMANCE:
+//		Missile Limits:
+//		- Max active missiles: 100
+//		- Typical in combat: 5-20 active
+//		- Update cost: ~0.5ms for 20 missiles
+//		- Collision cost: Depends on level complexity
+//
+//		Optimization:
+//		- Skip distant missiles (outside view frustum)
+//		- Reduce update rate for distant missiles
+//		- Simplified collision for fast missiles
+//		- Pool allocation (no malloc/free)
+//
+// INTEGRATION:
+//		Works with ARX_Damages for impact damage
+//		Uses ARX_Interactive for entity collision
+//		Integrates with ARX_Particles for visual trails
+//		Coordinates with ARX_Physics for trajectory
+//		Uses ARX_Sound for impact audio
+//		Works with ARX_Time for frame timing
+//
+// USE CASES:
+//		1. Archer NPC: Spawn arrow missile on attack
+//		2. Player Bow: Create arrow when player shoots
+//		3. Fireball Spell: Launch fireball at cursor position
+//		4. Magic Missile: Homing projectile toward enemy
+//		5. Thrown Potion: Physics-based projectile
+//		6. Crossbow Bolt: High-speed straight projectile
+//=============================================================================
 
 #include <ARX_Missile.h>
 

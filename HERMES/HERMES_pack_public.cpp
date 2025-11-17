@@ -45,16 +45,134 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
         `Q###F     "     `4###F   sebastien scieux @2001
 
 */
+//////////////////////////////////////////////////////////////////////////////////////
+// HERMES_pack_public.cpp - PAK Archive Reader with Compression & Encryption
+//////////////////////////////////////////////////////////////////////////////////////
+//
+// Description:
+//		Low-level PAK archive reader implementing file extraction, decompression,
+//		and decryption for Arx Fatalis resource packs.
+//
+// Purpose:
+//		Provides complete PAK archive reading functionality:
+//		- Loading and parsing PAK files
+//		- Decrypting encrypted FAT (File Allocation Table)
+//		- Decompressing files using PKZIP-style "explode" algorithm
+//		- File I/O operations on PAK-contained files
+//		- Extraction of PAK contents to disk
+//
+// Architecture:
+//
+//		EVE_LOADPACK - Single PAK Archive Reader
+//			Represents one loaded PAK file
+//			Contains: file handle, directory tree, FAT, encryption state
+//			Provides: Open/Close, Read/ReadAlloc, file I/O operations
+//
+//		PACK_FILE - Virtual File Handle
+//			Simulates FILE* for files inside PAK archives
+//			Contains: file metadata pointer, current offset, active flag, ID
+//			Allows transparent file I/O on archived files
+//
+//		Encryption System:
+//			- XOR-based encryption with rotating key position
+//			- Different keys for commercial game, demo, and debug builds
+//			- Encrypts FAT (directory structure) but not always file data
+//			- Per-character, per-short, per-int encryption functions
+//
+//		Compression:
+//			- Uses PKZIP "explode" algorithm (implode compression format)
+//			- param2 & PAK flag indicates if file is compressed
+//			- Decompresses on-the-fly during Read operations
+//			- Callback-based decompression (ReadData/WriteData callbacks)
+//
+// File Format:
+//		[Header - 4 bytes] - Offset to FAT
+//		[Data Blocks] - Compressed/uncompressed file data
+//		[FAT - Variable Size]
+//			- FAT size (4 bytes)
+//			- For each directory:
+//				* Directory path (encrypted null-terminated string)
+//				* File count (encrypted int)
+//				* For each file:
+//					+ Filename (encrypted null-terminated string)
+//					+ param - File offset in archive (encrypted int)
+//					+ param2 - Flags (PAK bit = compressed) (encrypted int)
+//					+ param3 - Uncompressed size (encrypted int)
+//					+ taille - Compressed size (encrypted int)
+//
+// FAT Encryption Keys:
+//		Commercial Game: "AVQF3FCKE50GRIAYXJP2AMEYO5QGA0JGIIH2NHBTVOA1VOGGU5H3GSSIARKPRQPQKKYEOIAQG1XRX0J4F5OEAEFI4DD3LL45VJTVOA1VOGGUKE50GRIAYX"
+//		Commercial Demo: "NSIARKPRQPHBTE50GRIH3AYXJP2AMF3FCEYAVQO5QGA0JGIIH2AYXKVOA1VOGGU5GSQKKYEOIAQG1XRX0J4F5OEAEFI4DD3LL45VJTVOA1VOGGUKE50GRI"
+//		Debug Build: "" (no encryption)
+//
+// Operations:
+//		Open() - Load PAK, parse encrypted FAT, build directory tree
+//		Close() - Close PAK file and free resources
+//		Read() - Read file from PAK into pre-allocated buffer
+//		ReadAlloc() - Read file and allocate buffer automatically
+//		GetSize() - Get decompressed file size
+//		fOpen/fClose/fRead/fSeek/fTell() - Standard file I/O on PAK files
+//		WriteSousRepertoire() - Extract directory tree to disk (debug)
+//
+// Performance:
+//		- Hash tables for O(1) file lookup within directories
+//		- Seek caching (iSeekPak) avoids redundant seeks
+//		- Stateful file handles (PACK_FILE array) for concurrent access
+//		- Decompression buffer reuse (pcWorkBuff global)
+//
+// Encryption Algorithm:
+//		XOR with rotating key:
+//			encrypted_byte = (plaintext_byte XOR key[key_position]) >> shift
+//			key_position = (key_position + 1) % key_length
+//		Applied to: FAT strings, integers, directory structure
+//		NOT applied to: File data itself (files stored compressed but not encrypted)
+//
+// Compression:
+//		- PKZIP "explode" algorithm (predecessor to deflate)
+//		- Files marked with PAK flag in param2 are compressed
+//		- Decompression uses callback functions for streaming
+//		- Supports partial reads from compressed files (complex buffering)
+//
+// Code: Sébastien Scieux @2001
+//
+// Copyright (c) 1999-2010 ARKANE Studios SA. All rights reserved
+//////////////////////////////////////////////////////////////////////////////////////
 
 #include "HERMES_pack_public.h"
 
 #define _CRTDBG_MAP_ALLOC
 #include <crtdbg.h>
 
-#define FINAL_COMMERCIAL_GAME
-//#define FINAL_COMMERCIAL_DEMO
+#define FINAL_COMMERCIAL_GAME		// Commercial release encryption key
+//#define FINAL_COMMERCIAL_DEMO		// Demo version encryption key
 
-//-----------------------------------------------------------------------------
+//#############################################################################
+//#############################################################################
+//                             EVE_LOADPACK Class
+//#############################################################################
+//#############################################################################
+
+//=============================================================================
+// FUNCTION: EVE_LOADPACK::EVE_LOADPACK (Constructor)
+//=============================================================================
+// Description:
+//		Constructs PAK archive reader with encryption key initialization.
+//
+// Algorithm:
+//		1. Initialize all pointers to NULL
+//		2. Clear PACK_FILE handle array (PACK_MAX_FREAD slots)
+//		3. Set encryption key based on build type:
+//		   - FINAL_COMMERCIAL_GAME: Full game encryption key
+//		   - FINAL_COMMERCIAL_DEMO: Demo version key
+//		   - Debug: Empty key (no encryption)
+//		4. Initialize encryption key position to 0
+//
+// Notes:
+//		- PACK_FILE array allows up to PACK_MAX_FREAD concurrent open files
+//		- Encryption key is 140+ character string for XOR obfuscation
+//		- Different keys prevent demo PAKs from working in full game
+//
+//=============================================================================
 EVE_LOADPACK::EVE_LOADPACK()
 {
 	lpszName = NULL;
@@ -85,7 +203,8 @@ EVE_LOADPACK::EVE_LOADPACK()
 	pcFAT = NULL;
 }
 
-//-----------------------------------------------------------------------------
+// EVE_LOADPACK::~EVE_LOADPACK - Destructor
+//		Frees PAK name, closes file, deletes directory tree, frees FAT buffer
 EVE_LOADPACK::~EVE_LOADPACK()
 {
 	if (lpszName)
@@ -105,7 +224,12 @@ EVE_LOADPACK::~EVE_LOADPACK()
 	}
 }
 
-//-----------------------------------------------------------------------------
+//#############################################################################
+//                    FAT PARSING HELPER FUNCTIONS
+//#############################################################################
+
+// ReadFAT_int - Read and decrypt 4-byte integer from FAT buffer
+//		Advances pcFAT pointer, decrements iTailleFAT
 int EVE_LOADPACK::ReadFAT_int()
 {
 	int i = *((int *)pcFAT);
@@ -117,7 +241,9 @@ int EVE_LOADPACK::ReadFAT_int()
 	return i;
 }
 
-//-----------------------------------------------------------------------------
+// ReadFAT_string - Read and decrypt null-terminated string from FAT
+//		Returns pointer to decrypted string in FAT buffer
+//		Advances pcFAT pointer past string
 char * EVE_LOADPACK::ReadFAT_string()
 {
 	char * t = pcFAT;
@@ -128,7 +254,44 @@ char * EVE_LOADPACK::ReadFAT_string()
 	return t;
 }
 
-//-----------------------------------------------------------------------------
+//=============================================================================
+// FUNCTION: EVE_LOADPACK::Open
+//=============================================================================
+// Description:
+//		Opens PAK archive and parses encrypted FAT to build directory tree.
+//
+// Parameters:
+//		_pcName - Path to PAK file
+//
+// Returns:
+//		true - PAK opened successfully
+//		false - Failed to open PAK file
+//
+// Algorithm:
+//		1. Open PAK file in binary read mode
+//		2. Read FAT offset from header (first 4 bytes)
+//		3. Seek to FAT and read FAT size
+//		4. Load entire FAT into memory
+//		5. Parse FAT:
+//		   a. For each directory:
+//		      - Read encrypted directory path
+//		      - Add directory to tree
+//		      - Read file count
+//		      - Create hash table for files (next power-of-2 >= count * 1.33)
+//		      - For each file:
+//		        * Read encrypted filename
+//		        * Read file metadata (offset, flags, sizes)
+//		        * Add file to directory
+//		6. Reset file pointer to start
+//		7. Save PAK filename
+//
+// Notes:
+//		- Entire FAT loaded into memory for fast parsing
+//		- Hash tables sized to avoid overload (>75% triggers size doubling)
+//		- Encryption key reset to 0 before parsing
+//		- Directory tree built using EVE_REPERTOIRE structure
+//
+//=============================================================================
 bool EVE_LOADPACK::Open(char * _pcName)
 {
 	pfFile = fopen(_pcName, "rb");
@@ -205,7 +368,8 @@ bool EVE_LOADPACK::Open(char * _pcName)
 	return true;
 }
 
-//-----------------------------------------------------------------------------
+// EVE_LOADPACK::Close - Close PAK file and free directory tree
+//		Closes file handle and deletes root directory (cascades to all subdirectories)
 void EVE_LOADPACK::Close()
 {
 	if (pfFile)
@@ -221,7 +385,12 @@ void EVE_LOADPACK::Close()
 	}
 }
 
-//-----------------------------------------------------------------------------
+//#############################################################################
+//                    DECOMPRESSION CALLBACK FUNCTIONS
+//#############################################################################
+
+// ReadData - Decompression callback: Read compressed data from PAK file
+//		Used by explode() algorithm to fetch compressed input
 static unsigned int ReadData(char * Buff, unsigned int * Size, void * Param)
 {
 	PAK_PARAM * pPP = (PAK_PARAM *)Param;
@@ -231,7 +400,8 @@ static unsigned int ReadData(char * Buff, unsigned int * Size, void * Param)
 	return (unsigned int)iRead;
 }
 
-//-----------------------------------------------------------------------------
+// WriteData - Decompression callback: Write decompressed data to memory buffer
+//		Used by explode() to output decompressed data
 static void WriteData(char * Buff, unsigned int * Size, void * Param)
 {
 	PAK_PARAM * pPP = (PAK_PARAM *) Param;
@@ -244,8 +414,43 @@ static void WriteData(char * Buff, unsigned int * Size, void * Param)
 	pPP->lSize -= lSize;
 }
 
-char pcWorkBuff[EXP_BUFFER_SIZE];
-//-----------------------------------------------------------------------------
+char pcWorkBuff[EXP_BUFFER_SIZE];	// Global decompression work buffer
+
+//#############################################################################
+//                    FILE EXTRACTION FUNCTIONS
+//#############################################################################
+
+//=============================================================================
+// FUNCTION: EVE_LOADPACK::Read
+//=============================================================================
+// Description:
+//		Reads file from PAK into pre-allocated buffer.
+//
+// Parameters:
+//		_pcName - File path within PAK (e.g., "textures\\wall.jpg")
+//		_mem - Pre-allocated buffer (must be >= file size)
+//
+// Returns:
+//		true - File read successfully
+//		false - File not found or error
+//
+// Algorithm:
+//		1. Parse path into directory and filename components
+//		2. Navigate directory tree to find file's directory
+//		3. Lookup file in directory's hash table
+//		4. Seek to file's offset in PAK
+//		5. If compressed (param2 & PAK):
+//		   - Use explode() with ReadData/WriteData callbacks
+//		6. If uncompressed:
+//		   - Direct fread into buffer
+//		7. Update seek cache (iSeekPak)
+//
+// Notes:
+//		- Caller must pre-allocate buffer (use GetSize)
+//		- Compression detected via PAK flag in param2
+//		- Hash table provides O(1) file lookup
+//
+//=============================================================================
 bool EVE_LOADPACK::Read(char * _pcName, void * _mem)
 {
 	if ((!_pcName) ||
@@ -328,7 +533,9 @@ bool EVE_LOADPACK::Read(char * _pcName, void * _mem)
 	return false;
 }
 
-//-----------------------------------------------------------------------------
+// EVE_LOADPACK::ReadAlloc - Read file from PAK with automatic buffer allocation
+//		Same as Read() but allocates buffer sized to file's decompressed size
+//		Returns buffer pointer and size via _piTaille parameter
 void * EVE_LOADPACK::ReadAlloc(char * _pcName, int * _piTaille)
 {
 	if ((!_pcName) ||
@@ -436,7 +643,22 @@ void * EVE_LOADPACK::ReadAlloc(char * _pcName, int * _piTaille)
 	return NULL;
 }
 
-//-----------------------------------------------------------------------------
+//=============================================================================
+// FUNCTION: EVE_LOADPACK::GetSize
+//=============================================================================
+// Description:
+//		Gets decompressed size of file in PAK.
+//
+// Returns:
+//		Decompressed file size in bytes
+//		-1 if file not found
+//
+// Notes:
+//		- Returns param3 (decompressed size) if compressed
+//		- Returns taille (actual size) if uncompressed
+//		- Does NOT read file data, just metadata
+//
+//=============================================================================
 int EVE_LOADPACK::GetSize(char * _pcName)
 {
 	if ((!_pcName) ||
@@ -509,7 +731,34 @@ int EVE_LOADPACK::GetSize(char * _pcName)
 	return -1;
 }
 
-//-----------------------------------------------------------------------------
+//#############################################################################
+//                    FILE I/O HANDLE FUNCTIONS
+//		These functions provide FILE*-like interface for PAK-contained files
+//#############################################################################
+
+//=============================================================================
+// FUNCTION: EVE_LOADPACK::fOpen
+//=============================================================================
+// Description:
+//		Opens file in PAK and returns virtual file handle (PACK_FILE*).
+//
+// Returns:
+//		PACK_FILE* handle for use with fRead/fSeek/fTell/fClose
+//		NULL if file not found or all handles in use
+//
+// Algorithm:
+//		1. Lookup file in directory tree
+//		2. Find free PACK_FILE slot in tPackFile array
+//		3. Initialize handle with file metadata pointer
+//		4. Mark slot as active with unique ID
+//		5. Return handle pointer
+//
+// Notes:
+//		- Maximum PACK_MAX_FREAD concurrent open files
+//		- Handle ID set to pcFAT address for validation
+//		- Handle stores file offset separately from PAK file offset
+//
+//=============================================================================
 PACK_FILE * EVE_LOADPACK::fOpen(const char * _pcName, const char * _pcMode)
 {
 	if ((!_pcName) ||
@@ -589,7 +838,9 @@ PACK_FILE * EVE_LOADPACK::fOpen(const char * _pcName, const char * _pcMode)
 	return NULL;
 }
 
-//-----------------------------------------------------------------------------
+// EVE_LOADPACK::fClose - Close PAK file handle
+//		Validates handle and marks slot as inactive
+//		Returns 0 on success, EOF on invalid handle
 int EVE_LOADPACK::fClose(PACK_FILE * _pPackFile)
 {
 	if ((!_pPackFile) ||
@@ -600,7 +851,8 @@ int EVE_LOADPACK::fClose(PACK_FILE * _pPackFile)
 	return 0;
 }
 
-//-----------------------------------------------------------------------------
+// ReadDataFRead - Decompression callback for partial reads from compressed files
+//		Similar to ReadData but for fRead operations
 static unsigned int ReadDataFRead(char * Buff, unsigned int * Size, void * Param)
 {
 	PAK_PARAM_FREAD * pPP = (PAK_PARAM_FREAD *)Param;
@@ -610,7 +862,9 @@ static unsigned int ReadDataFRead(char * Buff, unsigned int * Size, void * Param
 	return (unsigned int)iRead;
 }
 
-//-----------------------------------------------------------------------------
+// WriteDataFRead - Decompression callback for partial reads
+//		Handles offset/limit logic for reading subset of decompressed data
+//		Complex buffering to support fSeek + fRead on compressed files
 static void WriteDataFRead(char * Buff, unsigned int * Size, void * Param)
 {
 	PAK_PARAM_FREAD * pPP = (PAK_PARAM_FREAD *)Param;
@@ -648,7 +902,35 @@ static void WriteDataFRead(char * Buff, unsigned int * Size, void * Param)
 	}
 }
 
-//-----------------------------------------------------------------------------
+//=============================================================================
+// FUNCTION: EVE_LOADPACK::fRead
+//=============================================================================
+// Description:
+//		Reads data from PAK file handle (compressed or uncompressed).
+//
+// Parameters:
+//		_pMem - Output buffer
+//		_iSize - Size of each element
+//		_iCount - Number of elements
+//		_pPackFile - PAK file handle from fOpen
+//
+// Returns:
+//		Number of bytes read
+//
+// Algorithm:
+//		If file is compressed:
+//			- Decompress from current offset using complex buffering
+//			- WriteDataFRead handles offset/limit logic
+//		If file is uncompressed:
+//			- Direct fread from current offset
+//		Update handle's offset
+//
+// Notes:
+//		- Supports partial reads from middle of compressed files
+//		- Requires full decompression with buffering for offsets
+//		- Much more complex than Read() due to streaming nature
+//
+//=============================================================================
 int EVE_LOADPACK::fRead(void * _pMem, int _iSize, int _iCount, PACK_FILE * _pPackFile)
 {
 	if ((!_pPackFile) ||
@@ -705,7 +987,10 @@ int EVE_LOADPACK::fRead(void * _pMem, int _iSize, int _iCount, PACK_FILE * _pPac
 	return iTaille;
 }
 
-//-----------------------------------------------------------------------------
+// EVE_LOADPACK::fSeek - Seek to position in PAK file handle
+//		Supports SEEK_SET, SEEK_END, SEEK_CUR
+//		Updates handle's iOffset (logical position, not physical PAK offset)
+//		Returns 0 on success, 1 on error (out of bounds)
 int EVE_LOADPACK::fSeek(PACK_FILE * _pPackFile, unsigned long _lOffset, int _iOrigin)
 {
 	if ((!_pPackFile) ||
@@ -783,7 +1068,8 @@ int EVE_LOADPACK::fSeek(PACK_FILE * _pPackFile, unsigned long _lOffset, int _iOr
 	return 0;
 }
 
-//-----------------------------------------------------------------------------
+// EVE_LOADPACK::fTell - Get current position in PAK file handle
+//		Returns logical offset within file (not physical PAK offset)
 int EVE_LOADPACK::fTell(PACK_FILE * _pPackFile)
 {
 	if ((!_pPackFile) ||
@@ -793,7 +1079,14 @@ int EVE_LOADPACK::fTell(PACK_FILE * _pPackFile)
 	return _pPackFile->iOffset;
 }
 
-//-----------------------------------------------------------------------------
+//#############################################################################
+//                    ENCRYPTION / DECRYPTION FUNCTIONS
+//		XOR-based encryption with rotating key position
+//		Used for FAT (directory structure) encryption
+//#############################################################################
+
+// CryptChar - Encrypt single character using XOR with rotating key
+//		NOT USED (code appears incomplete - shift value is 0)
 void EVE_LOADPACK::CryptChar(unsigned char * _pChar)
 {
 #ifdef CRYPT_OFF
@@ -809,7 +1102,8 @@ void EVE_LOADPACK::CryptChar(unsigned char * _pChar)
 	if (iPassKey >= iTailleKey) iPassKey = 0;
 }
 
-//-----------------------------------------------------------------------------
+// UnCryptChar - Decrypt single character using XOR with rotating key
+//		XOR with current key character, advance key position
 void EVE_LOADPACK::UnCryptChar(unsigned char * _pChar)
 {
 #ifdef CRYPT_OFF
@@ -825,7 +1119,8 @@ void EVE_LOADPACK::UnCryptChar(unsigned char * _pChar)
 
 	if (iPassKey >= iTailleKey) iPassKey = 0;
 }
-//-----------------------------------------------------------------------------
+
+// CryptString - Encrypt null-terminated string character-by-character
 void EVE_LOADPACK::CryptString(unsigned char * _pTxt)
 {
 	unsigned char * pTxtCopy = (unsigned char *)_pTxt;
@@ -838,7 +1133,8 @@ void EVE_LOADPACK::CryptString(unsigned char * _pTxt)
 	}
 }
 
-//-----------------------------------------------------------------------------
+// UnCryptString - Decrypt null-terminated string character-by-character
+//		Returns length of string (excluding null terminator)
 int EVE_LOADPACK::UnCryptString(unsigned char * _pTxt)
 {
 	unsigned char * pTxtCopy = (unsigned char *)_pTxt;
@@ -861,7 +1157,7 @@ int EVE_LOADPACK::UnCryptString(unsigned char * _pTxt)
 	return iNbChar;
 }
 
-//-----------------------------------------------------------------------------
+// CryptShort - Encrypt 2-byte short by encrypting each byte separately
 void EVE_LOADPACK::CryptShort(unsigned short * _pShort)
 {
 	unsigned char cA, cB;
@@ -873,7 +1169,7 @@ void EVE_LOADPACK::CryptShort(unsigned short * _pShort)
 	*_pShort = cA | (cB << 8);
 }
 
-//-----------------------------------------------------------------------------
+// UnCryptShort - Decrypt 2-byte short by decrypting each byte separately
 void EVE_LOADPACK::UnCryptShort(unsigned short * _pShort)
 {
 	unsigned char cA, cB;
@@ -885,7 +1181,7 @@ void EVE_LOADPACK::UnCryptShort(unsigned short * _pShort)
 	*_pShort = cA | (cB << 8);
 }
 
-//-----------------------------------------------------------------------------
+// CryptInt - Encrypt 4-byte int by encrypting each short separately
 void EVE_LOADPACK::CryptInt(unsigned int * _iInt)
 {
 	unsigned short sA, sB;
@@ -897,7 +1193,7 @@ void EVE_LOADPACK::CryptInt(unsigned int * _iInt)
 	*_iInt = sA | (sB << 16);
 }
 
-//-----------------------------------------------------------------------------
+// UnCryptInt - Decrypt 4-byte int by decrypting each short separately
 void EVE_LOADPACK::UnCryptInt(unsigned int * _iInt)
 {
 	unsigned short sA, sB;
@@ -909,7 +1205,35 @@ void EVE_LOADPACK::UnCryptInt(unsigned int * _iInt)
 	*_iInt = sA | (sB << 16);
 }
 
-//-----------------------------------------------------------------------------
+//#############################################################################
+//                    EXTRACTION UTILITIES (DEBUG/DEVELOPMENT)
+//		Functions to extract PAK contents to disk for debugging
+//#############################################################################
+
+//=============================================================================
+// FUNCTION: EVE_LOADPACK::WriteSousRepertoire
+//=============================================================================
+// Description:
+//		Recursively extracts directory tree from PAK to disk.
+//
+// Parameters:
+//		pcAbs - Absolute path where to extract files
+//		r - Directory node to extract
+//
+// Algorithm:
+//		1. Build full directory path
+//		2. Create directory on disk
+//		3. For each file in directory:
+//		   - Read file from PAK
+//		   - Write to disk
+//		4. Recursively process subdirectories
+//
+// Notes:
+//		- Debug/development tool for inspecting PAK contents
+//		- Uses MessageBox for error reporting (Windows)
+//		- Prints extracted paths to console
+//
+//=============================================================================
 void EVE_LOADPACK::WriteSousRepertoire(char * pcAbs, EVE_REPERTOIRE * r)
 {
 	char EveTxtFile[256];
@@ -966,7 +1290,28 @@ void EVE_LOADPACK::WriteSousRepertoire(char * pcAbs, EVE_REPERTOIRE * r)
 	}
 }
 
-//-----------------------------------------------------------------------------
+//=============================================================================
+// FUNCTION: EVE_LOADPACK::WriteSousRepertoireZarbi
+//=============================================================================
+// Description:
+//		Test/validation version of WriteSousRepertoire - extracts PAK with
+//		fRead validation (reads files in random-sized chunks to test fRead).
+//
+// Purpose:
+//		- Validates fRead implementation on compressed files
+//		- Tests partial reads and seeking in PAK files
+//		- Compares extracted data with direct Read() output
+//
+// Algorithm:
+//		Same as WriteSousRepertoire but uses fOpen/fRead/fClose
+//		with random chunk sizes instead of direct Read()
+//
+// Notes:
+//		- "Zarbi" = French slang for "weird" (testing/debug function)
+//		- Useful for validating streaming decompression logic
+//		- Slower than WriteSousRepertoire due to random I/O
+//
+//=============================================================================
 void EVE_LOADPACK::WriteSousRepertoireZarbi(char * pcAbs, EVE_REPERTOIRE * r)
 {
 	char EveTxtFile[256];

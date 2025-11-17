@@ -42,10 +42,51 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //            @@@ @@@                           @@             @@        STUDIOS    //
 //////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////
-// EERIEObject
+// EERIEObject - 3D Object Loading and Management
 //////////////////////////////////////////////////////////////////////////////////////
 //
 // Description:
+//		3D object loading system for characters, items, and environmental geometry
+//		Handles FTL/TEO (The EERIE Object) file format with meshes, textures, and metadata
+//		Manages vertices, faces, normals, UV coordinates, and materials
+//
+// Purpose:
+//		- Load 3D models from FTL/TEO files (EERIE native format)
+//		- Manage vertex data, normals, texture coordinates
+//		- Handle materials and texture assignments
+//		- Link objects to animations (skeleton binding)
+//		- Provide object instancing (share geometry, unique transforms)
+//		- Optimize meshes (vertex welding, normal calculation)
+//
+// Key Components:
+//		EERIE_3DOBJ: Main 3D object structure with vertices, faces, textures
+//		EERIE_FACE: Triangle face with vertex indices and texture
+//		EERIE_VERTEX: 3D position with normal and UV coordinates
+//		EERIE_ACTIONLIST: Event triggers on object (hit, use, etc.)
+//		Linked Objects: Hierarchy for parent-child relationships
+//
+// Object Structure:
+//		Vertices: 3D positions in model space
+//		Faces: Triangles referencing vertices (indices)
+//		Normals: Per-vertex lighting normals
+//		UV Coords: Texture mapping coordinates
+//		Materials: Texture assignments and rendering properties
+//		Groups: Named selections for animation bones
+//
+// File Format (FTL/TEO):
+//		Header: Version, object name, metadata
+//		Vertices: Position array
+//		Faces: Triangle indices + texture references
+//		Textures: Texture filenames
+//		Actions: Scripted events
+//		Groups: Bone/joint definitions for animation
+//
+// Use Cases:
+//		- Load player character model
+//		- Load NPC and enemy models
+//		- Load items (swords, potions, torches)
+//		- Load level geometry (pillars, furniture)
+//		- Instance objects (multiple goblins sharing one mesh)
 //
 // Updates: (date) (person) (update)
 //

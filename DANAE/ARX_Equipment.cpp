@@ -54,6 +54,273 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //
 // Copyright (c) 1999-2001 ARKANE Studios SA. All rights reserved
 //////////////////////////////////////////////////////////////////////////////////////
+//=============================================================================
+// FILE: ARX_Equipment.cpp
+//=============================================================================
+// Component: DANAE Game Engine - Equipment and Weapon Management
+// Author: Cyril Meynier
+//
+// PURPOSE:
+//		Equipment system managing weapons, armor, and accessories worn by
+//		player and NPCs. Handles equipping, unequipping, visual attachment,
+//		and combat mechanics.
+//
+// ARCHITECTURE:
+//		Equipment slot system with 3D model attachment and stat bonuses:
+//
+//		Equipment Slots (IO_EQUIPITEM_ELEMENT):
+//		- ELEMENT_WEAPON_LEFT: Left hand weapon/shield
+//		- ELEMENT_WEAPON_RIGHT: Right hand weapon/tool
+//		- ELEMENT_HELMET: Head armor
+//		- ELEMENT_CHEST: Torso armor
+//		- ELEMENT_LEGGINGS: Leg armor
+//		- ELEMENT_BOOTS: Foot armor
+//		- ELEMENT_GLOVES: Hand armor
+//		- ELEMENT_RING_LEFT: Left ring
+//		- ELEMENT_RING_RIGHT: Right ring
+//		- ELEMENT_AMULET: Necklace/amulet
+//		- ELEMENT_TORCH: Held torch (special slot)
+//
+//		3D Model Attachment System:
+//		- Equipment items are 3D objects attached to character skeleton
+//		- Attachment points defined in character mesh (bones)
+//		- Real-time transformation: Item follows bone animation
+//		- Weapons track hand position during combat animations
+//
+// KEY FEATURES:
+//		Equip/Unequip System:
+//		- ARX_EQUIPMENT_Equip: Attach item to character
+//		- ARX_EQUIPMENT_UnEquip: Remove item from character
+//		- Validation: Check if item compatible with slot
+//		- Requirements: Level, stats, skills needed to equip
+//		- Visual update: Attach 3D model to skeleton bone
+//		- Stat recalculation: Update armor, damage, bonuses
+//
+//		Visual Attachment (3D Model Linking):
+//		- Find target bone in character skeleton
+//		- Create transform matrix from bone
+//		- Attach equipment object mesh to bone
+//		- Each frame: Update equipment position/rotation with bone
+//		- Handle scaling and offsets for proper fit
+//		- Multiple equipment pieces can attach to same character
+//
+//		Weapon Mechanics:
+//		- Weapon arc detection during swing animation
+//		- Trail particle effects (sword trails)
+//		- Impact point calculation
+//		- Damage based on weapon stats + character strength
+//		- Weapon reach and swing speed
+//		- Special weapon properties (fire damage, life steal, etc.)
+//
+//		Shield Mechanics:
+//		- Blocking system (reduce incoming damage)
+//		- Block chance based on shield and dexterity
+//		- Shield bash attack (knockback)
+//		- Durability system (shield can break)
+//
+//		Armor System Integration:
+//		- Each armor piece provides armor rating
+//		- Total armor = sum of all equipped pieces
+//		- Armor affects movement speed (heavy armor slows)
+//		- Armor material types: Cloth, leather, chainmail, plate
+//		- Visual: Character model reflects equipped armor
+//
+//		Dual Wielding:
+//		- Two weapons equipped (left and right hand)
+//		- Alternate attacks between hands
+//		- Damage penalty for dual wielding (70% per weapon)
+//		- Requires dual wield skill
+//		- Special dual-wield animations
+//
+//		Two-Handed Weapons:
+//		- Occupy both left and right weapon slots
+//		- Higher base damage than one-handed
+//		- Slower attack speed
+//		- Cannot use shield when equipped
+//		- Special two-handed combat animations
+//
+// ALGORITHMS:
+//		Equipment Attachment (EERIE_LINKEDOBJ_LinkObjectToObject):
+//		1. Get target character 3D object
+//		2. Get equipment item 3D object
+//		3. Find attachment bone in character skeleton
+//		   - Weapon → "primary_attach" or hand bone
+//		   - Helmet → "head" bone
+//		   - Chest → "torso" bone
+//		4. Create linked object entry
+//		5. Store: Equipment obj, Target obj, Bone ID, Offset
+//		6. Each frame during rendering:
+//		   a. Get bone's current world transform matrix
+//		   b. Apply equipment offset transform
+//		   c. Render equipment at calculated position/rotation
+//
+//		Weapon Damage Calculation:
+//		BaseDamage = weapon.damage
+//		AttributeBonus = character.strength * weapon.strengthScaling / 100
+//		TotalDamage = BaseDamage + AttributeBonus
+//		If (critical): TotalDamage *= criticalMultiplier
+//		Return TotalDamage
+//
+//		Blocking Calculation:
+//		BlockChance = shield.blockRating + character.dexterity / 5
+//		Roll random 0-100
+//		If (roll < BlockChance):
+//		  DamageReduction = shield.absorption (50-90%)
+//		  FinalDamage = IncomingDamage * (1 - DamageReduction/100)
+//		Else:
+//		  FinalDamage = IncomingDamage (block failed)
+//
+//		Weapon Arc Hit Detection:
+//		1. During attack animation, track weapon tip position each frame
+//		2. Store previous position: prevPos
+//		3. Current position: currPos
+//		4. Create line segment from prevPos to currPos (weapon arc)
+//		5. For each potential target in range:
+//		   a. Get target collision cylinder
+//		   b. Check if line segment intersects cylinder
+//		   c. If intersection:
+//		      - Calculate impact point
+//		      - Apply weapon damage
+//		      - Trigger hit effects (blood, sound)
+//		      - Mark target as hit this swing (prevent multi-hit)
+//
+//		Equipment Requirement Check:
+//		Function: CanEquip(character, item)
+//		1. Check item type matches slot
+//		2. Check level requirement: character.level >= item.requiredLevel
+//		3. Check stat requirements:
+//		   - If (character.strength < item.requiredStrength): FAIL
+//		   - If (character.dexterity < item.requiredDex): FAIL
+//		   - If (character.mind < item.requiredMind): FAIL
+//		4. Check class restriction (warrior-only, mage-only, etc.)
+//		5. If all checks pass: Return TRUE
+//		6. Else: Display error message, Return FALSE
+//
+// WEAPON TYPES:
+//		Melee Weapons:
+//		- Swords: Balanced damage and speed
+//		- Axes: High damage, slow speed, armor penetration
+//		- Maces/Hammers: Crush damage, stun chance
+//		- Daggers: Fast, low damage, high critical chance
+//		- Spears/Polearms: Long reach, moderate damage
+//		- Two-handed: Great swords, battle axes, war hammers
+//
+//		Ranged Weapons:
+//		- Bows: Medium range, moderate damage
+//		- Crossbows: Long range, high damage, slow reload
+//		- Throwing weapons: Short range, fast attacks
+//		- Requires ammunition (arrows, bolts)
+//
+//		Shields:
+//		- Small shields: Low armor, fast blocks, parry ability
+//		- Medium shields: Balanced armor and speed
+//		- Large shields: High armor, slow, full body coverage
+//		- Tower shields: Maximum armor, very slow, immobile when blocking
+//
+// SPECIAL EQUIPMENT EFFECTS:
+//		Enchanted Weapons:
+//		- Fire weapons: Bonus fire damage, chance to ignite
+//		- Ice weapons: Slow enemy movement
+//		- Lightning weapons: Chain lightning to nearby enemies
+//		- Poison weapons: Damage over time effect
+//		- Life steal: Heal attacker for % of damage
+//
+//		Cursed Items:
+//		- Cannot unequip without remove curse spell
+//		- Negative stat modifiers while equipped
+//		- May damage wearer over time
+//		- Often powerful but with drawback
+//
+//		Set Items:
+//		- Wearing multiple pieces from same set grants bonuses
+//		- 2 pieces: Minor bonus
+//		- 4 pieces: Medium bonus
+//		- Full set: Major bonus + special ability
+//
+// VISUAL FEATURES:
+//		Weapon Trails:
+//		- Particle effect following weapon during swing
+//		- Color based on weapon enchantment
+//		- Length and intensity based on swing speed
+//		- Creates visual feedback for attacks
+//
+//		Equipment Glow:
+//		- Magical equipment emits colored glow
+//		- Pulsing animation
+//		- Dynamic light source
+//		- Helps identify magical items visually
+//
+//		Wear and Tear:
+//		- Equipment degrades with use
+//		- Visual: Scratches, dents, blood stains appear
+//		- Low durability: Model shows damage
+//		- Broken: Equipment ceases to function
+//
+// INTEGRATION:
+//		Works with ARX_Inventory for item storage
+//		Coordinates with ARX_Damages for combat damage
+//		Uses ARX_Interactive for equipment objects
+//		Integrates with ARX_Player for player equipment
+//		Uses EERIE skeletal system for 3D attachment
+//		Coordinates with ARX_Sound for equip/impact sounds
+//
+// EQUIPMENT STATS:
+//		Weapons:
+//		- Damage: Base damage value
+//		- Speed: Attack rate multiplier
+//		- Reach: Maximum attack range
+//		- Critical: Bonus critical chance
+//		- Requirements: Str/Dex/Level needed
+//
+//		Armor:
+//		- Armor Rating: Damage reduction percentage
+//		- Weight: Affects movement speed
+//		- Durability: How much damage before breaking
+//		- Resistances: Elemental damage reduction
+//		- Requirements: Str/Level needed
+//
+//		Accessories (Rings, Amulets):
+//		- Stat Bonuses: +Strength, +Dexterity, +Mind
+//		- Resistances: +Fire Resist, +Poison Resist
+//		- Special Abilities: Water breathing, invisibility
+//		- No armor value (jewelry doesn't protect)
+//
+// TYPICAL USAGE:
+//		Equip Sword:
+//		1. Player drags sword from inventory to weapon slot
+//		2. Check requirements (strength, level)
+//		3. If valid: ARX_EQUIPMENT_Equip(player, sword, ELEMENT_WEAPON_RIGHT)
+//		4. Attach sword 3D model to right hand bone
+//		5. Update player damage stats
+//		6. Play equip sound
+//		7. Display "Equipped: Iron Sword" message
+//
+//		Attack with Weapon:
+//		1. Player presses attack button
+//		2. Play attack animation
+//		3. Each frame during swing:
+//		   a. Update weapon position (follows hand)
+//		   b. Check weapon arc for collision with enemies
+//		   c. If hit detected:
+//		      - Calculate damage from weapon + strength
+//		      - Apply damage to enemy
+//		      - Spawn blood particles
+//		      - Play impact sound
+//		4. Attack animation completes
+//		5. Cooldown before next attack
+//
+//		Block with Shield:
+//		1. Enemy attacks player
+//		2. Player has shield equipped
+//		3. Calculate block chance
+//		4. If successful:
+//		   - Reduce damage by shield absorption
+//		   - Play block animation and sound
+//		   - Spark particles at shield
+//		5. If failed:
+//		   - Full damage taken
+//		   - Normal hit reaction
+//=============================================================================
 
 #include <stdio.h>
 #include <stdlib.h>

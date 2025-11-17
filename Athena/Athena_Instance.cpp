@@ -31,22 +31,98 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #define _CRTDBG_MAP_ALLOC
 #include <crtdbg.h>
 
+//////////////////////////////////////////////////////////////////////////////////////
+// Athena_Instance.cpp - Playing Sound Instance Management
+//////////////////////////////////////////////////////////////////////////////////////
+//
+// Description:
+//		Sound instance management - actual playing sounds with DirectSound buffers
+//		Instances are created from samples and represent active audio playback
+//		Handles streaming, 3D positioning, volume/pitch control, callbacks
+//
+// Purpose:
+//		- Create playable sound instances from samples
+//		- Manage DirectSound buffers and 3D sound interfaces
+//		- Stream large audio files to reduce memory usage
+//		- Handle looping, callbacks, and playback control
+//		- Implement 3D audio positioning and distance culling
+//		- Manage mixer hierarchy for volume/pitch control
+//
+// Instance Lifecycle:
+//		1. Create Instance object
+//		2. Init() - Associate with Sample, create DirectSound buffer
+//		3. Play() - Start playback (optional loop count)
+//		4. Update() - Called each frame to update streaming, callbacks, state
+//		5. Stop/Pause/Resume() - Playback control
+//		6. Clean() - Release DirectSound resources
+//		7. Destructor - Cleanup and deletion
+//
+// Streaming:
+//		Large audio files (> stream_limit_bytes) are streamed:
+//		- Only a portion of audio loaded into circular DirectSound buffer
+//		- Update() refills buffer as playback progresses
+//		- Reduces memory usage for music and long ambiences
+//		- Transparent to caller (works same as non-streamed sounds)
+//
+// 3D Audio:
+//		If FLAG_ANY_3D_FX flag set:
+//		- Creates IDirectSound3DBuffer interface
+//		- Supports position, velocity, direction, cone, falloff
+//		- Distance culling (IsTooFar) pauses sounds beyond max distance
+//		- EAX reverb integration if hardware supports it
+//
+// Mixer Integration:
+//		Instances reference a Mixer for volume/pitch control:
+//		- Mixer volumes are multiplied up the hierarchy
+//		- SetVolume/SetPitch apply mixer values automatically
+//		- Allows category-based control (SFX, music, voice, etc.)
+//
+// Callbacks:
+//		Sample can register callbacks at specific time offsets:
+//		- Update() checks if callback time reached
+//		- Calls registered function with instance ID and user data
+//		- Used for syncing events to audio (e.g., footstep particles)
+//
+// Code: Arkane Studios
+//
+// Copyright (c) 1999-2010 ARKANE Studios SA. All rights reserved
+//////////////////////////////////////////////////////////////////////////////////////
+
 namespace ATHENA
 {
 
-	// Status flags                                                              //
+	//=============================================================================
+	// Instance Status Flags
+	//=============================================================================
+	// IS_IDLED: Instance finished playing (reached end, not looping)
+	// IS_PAUSED: Instance paused (can be resumed)
+	// IS_TOOFAR: Instance beyond max 3D distance (culled to save CPU)
+	//=============================================================================
 	static enum ATHENAInstance
 	{
-		IS_IDLED     = 0x00000001,
-		IS_PAUSED    = 0x00000002,
-		IS_TOOFAR    = 0x00000004
+		IS_IDLED     = 0x00000001,		// Playback finished
+		IS_PAUSED    = 0x00000002,		// Playback paused
+		IS_TOOFAR    = 0x00000004		// Beyond 3D max distance
 	};
 
+	//=============================================================================
+	// InstanceDebugLog - Write Instance State to Debug Log
+	//=============================================================================
+	// Description:
+	//		Logs instance state with timestamp and loop count
+	//		Used for debugging audio playback issues
+	//
+	// Format:
+	//		[sample_id - instance_id][MM" SS' mmm][loop][message]
+	//		Example: [042 - 007][01" 23' 456][02][STARTED]
+	//
+	//=============================================================================
 	static aalVoid InstanceDebugLog(Instance * instance, const char * _text)
 	{
 		char text[256];
 		aalULong _time(BytesToUnits(instance->time, instance->sample->format, AAL_UNIT_MS));
 
+		// Format: [sample-instance][minutes"seconds'milliseconds][loop][message]
 		sprintf(text, "[%03u - %03u][%02u\" %02u' %03u][%02u][%s]\n",
 		        GetSampleID(instance->id), GetInstanceID(instance->id),
 		        _time / 60000, _time % 60000 / 1000, _time % 1000,
@@ -54,34 +130,89 @@ namespace ATHENA
 		DebugLog(text);
 	}
 
-	///////////////////////////////////////////////////////////////////////////////
-	//                                                                           //
-	// Constructor and destructor                                                //
-	//                                                                           //
-	///////////////////////////////////////////////////////////////////////////////
+	//=============================================================================
+	// Instance Constructor
+	//=============================================================================
+	// Description:
+	//		Initialize instance with default values
+	//		Instance not usable until Init() called
+	//
+	// Default Values:
+	//		sample: NULL (no associated sample yet)
+	//		status: 0 (not playing, not paused, not idled)
+	//		loop: 0 (no loops remaining)
+	//		time: 0 (no playback time elapsed)
+	//		stream: NULL (no streaming)
+	//		size/read/write: 0 (no buffer data)
+	//		lpdsb: NULL (no DirectSound buffer)
+	//		lpds3db: NULL (no 3D audio interface)
+	//		lpeax: NULL (no EAX interface)
+	//
+	//=============================================================================
 	Instance::Instance() :
-		sample(NULL),
-		status(0),
-		loop(0), time(0),
-		stream(NULL), size(0), read(0), write(0),
-		lpdsb(NULL), lpds3db(NULL), lpeax(NULL)
+		sample(NULL),		// No sample associated
+		status(0),			// Not playing/paused/idled
+		loop(0), time(0),	// No loops or playback time
+		stream(NULL), size(0), read(0), write(0),	// No streaming setup
+		lpdsb(NULL), lpds3db(NULL), lpeax(NULL)		// No DirectSound interfaces
 	{
 	}
 
-	extern  long NBREVERB;
-	extern char szT[1024];
-	extern bool bLog;
+	extern  long NBREVERB;		// External reverb counter (for debugging)
+	extern char szT[1024];		// External temp string buffer
+	extern bool bLog;			// External logging flag
 
+	//=============================================================================
+	// Instance Destructor
+	//=============================================================================
+	// Description:
+	//		Cleanup instance and release all resources
+	//		Stops playback and frees DirectSound interfaces
+	//
+	//=============================================================================
 	Instance::~Instance()
 	{
-		Clean();
+		Clean();	// Release all resources
 	}
 
-	///////////////////////////////////////////////////////////////////////////////
-	//                                                                           //
-	// Setup                                                                     //
-	//                                                                           //
-	///////////////////////////////////////////////////////////////////////////////
+	//=============================================================================
+	// INSTANCE SETUP METHODS
+	//=============================================================================
+
+	//=============================================================================
+	// Init - Initialize Instance from Sample
+	//=============================================================================
+	// Description:
+	//		Creates playable instance from sample
+	//		Sets up DirectSound buffer, 3D audio, streaming, etc.
+	//
+	// Parameters:
+	//		__sample: Sample to play
+	//		_channel: Playback channel settings (volume, pitch, position, etc.)
+	//
+	// Returns:
+	//		AAL_OK on success
+	//		AAL_ERROR_SYSTEM if DirectSound calls fail
+	//		AAL_ERROR_FILEIO if stream creation fails
+	//
+	// Algorithm:
+	//		1. Clean any existing instance data
+	//		2. Store sample reference and channel settings
+	//		3. Build DirectSound buffer description (flags for volume/pitch/pan/3D)
+	//		4. Determine if streaming needed (sample > stream_limit_bytes)
+	//		5. Create DirectSound buffer
+	//		6. Apply initial volume, pitch, pan settings
+	//		7. Create 3D/EAX interfaces if needed
+	//		8. Create audio stream for file I/O
+	//		9. Preload buffer (full load if not streaming, partial if streaming)
+	//
+	// Notes:
+	//		Streaming is transparent - caller doesn't need to know if streaming
+	//		Sample reference count incremented (Catch) to prevent deletion
+	//		3D audio requires IDirectSound3DBuffer interface from buffer
+	//		EAX reverb setup if hardware supports it (is_reverb_present)
+	//
+	//=============================================================================
 	aalError Instance::Init(Sample * __sample, const aalChannel & _channel)
 	{
 		DSBUFFERDESC _desc;
@@ -551,6 +682,41 @@ namespace ATHENA
 	// Control                                                                   //
 	//                                                                           //
 	///////////////////////////////////////////////////////////////////////////////
+
+	//=============================================================================
+	// Play - Start or Resume Instance Playback
+	//=============================================================================
+	// Description:
+	//		Starts playing sound instance with optional loop count
+	//		If already playing, enqueues additional loops
+	//
+	// Parameters:
+	//		play_count: Number of times to play (0 = infinite loop)
+	//
+	// Returns:
+	//		AAL_OK: Successfully started playback
+	//		AAL_ERROR_SYSTEM: DirectSound API call failed
+	//		AAL_ERROR: Streaming preload failed
+	//
+	// Algorithm:
+	//		If already playing:
+	//			1. Add play_count to remaining loops (0 = set infinite)
+	//			2. Ensure DirectSound buffer is looping
+	//		Else (starting fresh):
+	//			1. Preload first segment if streaming
+	//			2. Reset playback state (time, read/write cursors, callbacks)
+	//			3. Set loop count (play_count - 1 for DirectSound)
+	//			4. Reset DirectSound buffer position to start
+	//			5. Start DirectSound playback with LOOPING flag if needed
+	//
+	// Implementation Notes:
+	//		- play_count = 0: Infinite loop (loop = 0xFFFFFFFF internally)
+	//		- play_count = 1: Play once (loop = 0)
+	//		- play_count = N: Play N times (loop = N-1)
+	//		- Streaming sounds always use DSBPLAY_LOOPING (for circular buffer)
+	//		- Callback system reset to first callback (callb_i = 0)
+	//
+	//=============================================================================
 	aalError Instance::Play(const aalULong & play_count)
 	{
 		//Enqueue _loop count if instance is already playing
@@ -598,6 +764,24 @@ namespace ATHENA
 		return AAL_OK;
 	}
 
+	//=============================================================================
+	// Stop - Stop Playback and Reset Position
+	//=============================================================================
+	// Description:
+	//		Stops instance playback and resets to beginning
+	//		Sets instance to IDLED state
+	//
+	// Returns:
+	//		AAL_OK: Successfully stopped
+	//		AAL_ERROR_SYSTEM: DirectSound API call failed
+	//
+	// Implementation:
+	//		- Stop DirectSound buffer playback
+	//		- Reset buffer position to start (for next Play call)
+	//		- Clear PAUSED flag, set IDLED flag
+	//		- No-op if already idled
+	//
+	//=============================================================================
 	aalError Instance::Stop()
 	{
 		if (status & IS_IDLED) return AAL_OK;
@@ -612,6 +796,25 @@ namespace ATHENA
 		return AAL_OK;
 	}
 
+	//=============================================================================
+	// Pause - Pause Playback (Can be Resumed)
+	//=============================================================================
+	// Description:
+	//		Pauses instance playback, maintaining current position
+	//		Can be resumed later with Resume()
+	//
+	// Returns:
+	//		AAL_OK: Successfully paused
+	//
+	// Implementation:
+	//		- Stop DirectSound buffer (but don't reset position)
+	//		- Set PAUSED flag (preserves playback position)
+	//		- No-op if already idled
+	//
+	// Note:
+	//		Unlike Stop(), this preserves playback position for Resume()
+	//
+	//=============================================================================
 	aalError Instance::Pause()
 	{
 		if (status & IS_IDLED) return AAL_OK;
@@ -624,6 +827,23 @@ namespace ATHENA
 		return AAL_OK;
 	}
 
+	//=============================================================================
+	// Resume - Resume Paused Playback
+	//=============================================================================
+	// Description:
+	//		Resumes instance that was paused with Pause()
+	//		Continues from paused position
+	//
+	// Returns:
+	//		AAL_OK: Successfully resumed
+	//		AAL_ERROR_SYSTEM: DirectSound API call failed
+	//
+	// Implementation:
+	//		- Clear PAUSED flag
+	//		- Restart DirectSound buffer (continues from current position)
+	//		- Use LOOPING flag if loops remaining or streaming
+	//
+	//=============================================================================
 	aalError Instance::Resume()
 	{
 		if (status & IS_IDLED) return AAL_OK;
@@ -652,6 +872,36 @@ namespace ATHENA
 		return aalFloat(sqrt(x * x + y * y + z * z));
 	}
 
+	//=============================================================================
+	// IsTooFar - Distance Culling for 3D Audio
+	//=============================================================================
+	// Description:
+	//		Checks if 3D sound is beyond max distance (distance culling)
+	//		Pauses sound if too far, resumes if comes back in range
+	//		Optimization to save CPU cycles on distant sounds
+	//
+	// Returns:
+	//		AAL_UTRUE: Sound is beyond max distance (culled)
+	//		AAL_UFALSE: Sound is within audible range
+	//
+	// Algorithm:
+	//		1. Get max audible distance from DirectSound3D buffer
+	//		2. Get listener position (0,0,0 if relative mode)
+	//		3. Calculate distance from listener to sound position
+	//		4. If previously too far:
+	//		   - Still too far? Return TRUE (stay paused)
+	//		   - Back in range? Clear flag, resume playback, return FALSE
+	//		5. If previously in range:
+	//		   - Still in range? Return FALSE
+	//		   - Now too far? Set flag, pause playback, return TRUE
+	//
+	// Implementation Notes:
+	//		- Only called for 3D sounds (requires lpds3db)
+	//		- Hysteresis: no explicit threshold to prevent flickering
+	//		- Paused sounds don't consume DirectSound mixing resources
+	//		- Position/distance checked each Update() call
+	//
+	//=============================================================================
 	aalUBool Instance::IsTooFar()
 	{
 		aalVector listener_pos;
@@ -659,6 +909,7 @@ namespace ATHENA
 
 		lpds3db->GetMaxDistance(&max);
 
+		// Get listener position (origin if relative positioning)
 		if (channel.flags & AAL_FLAG_RELATIVE)
 			listener_pos.x = listener_pos.y = listener_pos.z = 0.0F;
 		else
@@ -666,10 +917,13 @@ namespace ATHENA
 
 		dist = Distance(listener_pos, channel.position);
 
+		// State machine: IS_TOOFAR flag tracks current culling state
 		if (status & IS_TOOFAR)
 		{
-			if (dist > max) return AAL_UTRUE;
+			// Currently culled - check if back in range
+			if (dist > max) return AAL_UTRUE;	// Still too far
 
+			// Back in range - resume playback
 			status &= ~IS_TOOFAR;
 			lpdsb->Play(0, 0, loop || stream ? DSBPLAY_LOOPING : 0);
 
@@ -677,8 +931,10 @@ namespace ATHENA
 		}
 		else
 		{
-			if (dist <= max) return AAL_UFALSE;
+			// Currently playing - check if moved out of range
+			if (dist <= max) return AAL_UFALSE;	// Still in range
 
+			// Moved out of range - cull (pause playback)
 			status |= IS_TOOFAR;
 			lpdsb->Stop();
 		}
@@ -686,6 +942,35 @@ namespace ATHENA
 		return AAL_UTRUE;
 	}
 
+	//=============================================================================
+	// UpdateStreaming - Refill Streaming Audio Buffer
+	//=============================================================================
+	// Description:
+	//		Updates streaming audio by refilling circular DirectSound buffer
+	//		Called each frame during Update() for streaming sounds
+	//
+	// Algorithm:
+	//		1. Calculate buffer region that needs refilling (write to read)
+	//		2. Lock DirectSound buffer region
+	//		3. Read audio data from stream to fill region
+	//		4. Handle loop: if reached end and looping, wrap to start
+	//		5. Handle end: if reached end and not looping, fill silence
+	//		6. Unlock buffer region
+	//		7. Update write cursor position
+	//
+	// Circular Buffer:
+	//		DirectSound buffer is circular (wraps at end)
+	//		Lock can return 2 regions (ptr0/cur0 and ptr1/cur1)
+	//		ptr1/cur1 used when lock wraps around buffer end
+	//
+	// Implementation Notes:
+	//		- write: Where we last wrote data (producer cursor)
+	//		- read: Where DirectSound is playing from (consumer cursor)
+	//		- Gap between cursors must stay ahead of playback
+	//		- If stream reaches EOF and looping: seek to start, continue
+	//		- If stream reaches EOF and not looping: fill with silence
+	//
+	//=============================================================================
 	aalVoid Instance::UpdateStreaming()
 	{
 		aalVoid * ptr0, *ptr1;
@@ -743,10 +1028,46 @@ namespace ATHENA
 		if (write >= size) write -= size;
 	}
 
+	//=============================================================================
+	// Update - Per-Frame Instance Update
+	//=============================================================================
+	// Description:
+	//		Main update function called each frame for active instances
+	//		Handles streaming buffer refill, callbacks, distance culling, loop counting
+	//
+	// Returns:
+	//		AAL_OK: Update successful
+	//
+	// Algorithm:
+	//		1. Skip if instance is idled or paused
+	//		2. Distance culling: check if 3D sound too far (IsTooFar)
+	//		3. Get DirectSound playback position (read cursor)
+	//		4. If position unchanged and not playing: stop instance
+	//		5. Calculate elapsed time since last update
+	//		6. Process callbacks at specific time offsets
+	//		7. Handle loop counting and end-of-playback detection
+	//		8. Refill streaming buffer if needed (UpdateStreaming)
+	//
+	// Per-Frame Responsibilities:
+	//		- Track playback time (time += bytes played since last frame)
+	//		- Trigger callbacks when time thresholds reached
+	//		- Detect end of playback (for non-looping sounds)
+	//		- Count down loops remaining
+	//		- Refill streaming audio buffers
+	//		- Distance cull 3D sounds outside audible range
+	//
+	// Implementation Notes:
+	//		- Called every frame by AAL_Update() for all active instances
+	//		- Critical for streaming: must refill before DirectSound catches up
+	//		- Callback system allows game events synced to audio timing
+	//		- Loop counting: decrement 'loop' each time playback wraps
+	//
+	//=============================================================================
 	aalError Instance::Update()
 	{
 		aalULong last;
 
+		// Skip update if not actively playing
 		if (status & (IS_IDLED | IS_PAUSED)) return AAL_OK;
 
 		if (listener && channel.flags & AAL_FLAG_POSITION && lpds3db && IsTooFar())
@@ -810,3 +1131,7 @@ namespace ATHENA
 	}
 
 }//ATHENA::
+
+//=============================================================================
+// END OF FILE
+//=============================================================================

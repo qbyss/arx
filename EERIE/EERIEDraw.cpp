@@ -40,7 +40,53 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //@@@    @@@@ @@@@@@@   @@@@             @@      @@   @@@@    @@@@@       @@        //
 //@@@    @@@  @@@ @@@@@                          @@            @@@                  //
 //            @@@ @@@                           @@             @@        STUDIOS    //
-//////////////////////////////////////////////////////////////////////////////////////                                                                                     
+//////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
+// EERIEDraw - Main Rendering Pipeline
+//////////////////////////////////////////////////////////////////////////////////////
+//
+// Description:
+//		Core rendering pipeline for EERIE 3D engine
+//		Handles scene rendering, visibility culling, and DirectX draw calls
+//		Coordinates between world, camera, lighting, and display
+//
+// Purpose:
+//		- Render complete 3D scenes (levels, characters, objects)
+//		- Camera management (position, rotation, FOV)
+//		- Frustum culling (skip objects outside view)
+//		- Visibility determination (portal/room-based)
+//		- Particle rendering (smoke, fire, magic effects)
+//		- Special effects (halo, glow, lens flare)
+//
+// Rendering Pipeline:
+//		1. Clear buffers (color, depth/Z-buffer)
+//		2. Set camera view and projection matrices
+//		3. Cull invisible geometry (frustum, portals)
+//		4. Render background/sky
+//		5. Render opaque geometry (front-to-back for Z culling)
+//		6. Render transparent objects (back-to-front for blending)
+//		7. Render particles and effects
+//		8. Render UI/HUD overlays
+//		9. Present to screen (flip buffers)
+//
+// Key Components:
+//		Camera: View position, direction, FOV, clipping planes
+//		Viewport: Screen resolution and aspect ratio
+//		Draw primitives: DrawPoly, DrawObject, DrawParticle
+//		Coordinate transforms: World -> View -> Screen
+//		Depth buffering: Z-buffer for proper occlusion
+//
+// Optimization Techniques:
+//		- Frustum culling: Don't render off-screen objects
+//		- Portal rendering: Only render visible rooms
+//		- Depth sorting: Render front-to-back for early Z rejection
+//		- Batch rendering: Group similar objects to reduce state changes
+//		- LOD: Use simpler meshes for distant objects
+//
+// Code: Cyril Meynier
+//
+// Copyright (c) 1999 ARKANE Studios SA. All rights reserved
+//////////////////////////////////////////////////////////////////////////////////////
 
 #include "EERIEDraw.h" 
 #include "EERIEApp.h" 

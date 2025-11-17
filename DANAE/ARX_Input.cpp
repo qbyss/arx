@@ -54,6 +54,263 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //
 // Copyright (c) 1999-2001 ARKANE Studios SA. All rights reserved
 //////////////////////////////////////////////////////////////////////////////////////
+//=============================================================================
+// FILE: ARX_Input.cpp
+//=============================================================================
+// Component: DANAE Game Engine - Input Handling System
+// Author: Cyril Meynier
+//
+// PURPOSE:
+//		Unified input system handling keyboard, mouse, and gamepad input.
+//		Provides abstraction layer over DirectInput (MERCURY system) for
+//		game controls and user interaction.
+//
+// ARCHITECTURE:
+//		Layered input system built on MERCURY/DirectInput:
+//
+//		Input Device Stack:
+//		1. Hardware Layer: Physical devices (keyboard, mouse, gamepad)
+//		2. DirectInput Layer: Windows DirectInput API (DXI)
+//		3. MERCURY Layer: Arkane's input abstraction (DXI wrapper)
+//		4. ARX Layer: Game-specific input handling (this file)
+//		5. Game Logic: Actions triggered by input
+//
+//		Supported Devices:
+//		- Keyboard (DXI_KEYBOARD1): All standard keys
+//		- Mouse (DXI_MOUSE1): Buttons, movement, scroll wheel
+//		- Gamepad (DXI_JOY1): Xbox-style controllers
+//		- SCID (DXI_SCID): Special controller interface device
+//
+//		Input Modes:
+//		- Exclusive: Game has full control, OS doesn't see input
+//		- Non-Exclusive: Shared with OS (can alt-tab)
+//		- Buffered: Input queued for processing
+//		- Immediate: Input polled each frame
+//
+// KEY FEATURES:
+//		Initialization:
+//		- ARX_INPUT_Init: Initialize all input devices
+//		- Detect available controllers (Xbox, PlayStation, generic)
+//		- Set input modes (exclusive vs non-exclusive)
+//		- Configure mouse relative mode (for camera control)
+//		- Fallback handling if devices unavailable
+//
+//		Keyboard Input:
+//		- Key state queries (IsKeyPressed, IsKeyDown, IsKeyReleased)
+//		- Buffered key events for text input
+//		- Key repeat handling
+//		- Modifier key support (Shift, Ctrl, Alt)
+//		- Configurable key bindings
+//		- Text input for chat/console
+//
+//		Mouse Input:
+//		- Button states (left, right, middle, extra buttons)
+//		- Relative movement deltas (for camera rotation)
+//		- Absolute screen position (for UI interaction)
+//		- Scroll wheel support
+//		- Mouse sensitivity adjustment
+//		- Mouse smoothing/acceleration
+//
+//		Gamepad Input:
+//		- Analog sticks (left/right with dead zones)
+//		- Triggers (analog pressure-sensitive buttons)
+//		- Face buttons (A, B, X, Y)
+//		- Shoulder buttons (LB, RB, LT, RT)
+//		- D-pad (directional buttons)
+//		- Rumble/vibration feedback
+//		- Button remapping
+//
+//		Input Contexts:
+//		- Gameplay Mode: Normal game controls active
+//		- Menu Mode: UI navigation, limited game controls
+//		- Inventory Mode: Item management specific controls
+//		- Dialog Mode: Conversation selection
+//		- Spell Casting Mode: Gesture recognition
+//		- Context switching: Automatic control scheme changes
+//
+// ALGORITHMS:
+//		Input Processing Loop (Each Frame):
+//		1. Poll all input devices (keyboard, mouse, gamepad)
+//		2. Update device states from DirectInput
+//		3. Apply dead zones to analog inputs
+//		4. Process key/button state transitions:
+//		   - Pressed: Was up last frame, down this frame
+//		   - Held: Was down last frame, still down this frame
+//		   - Released: Was down last frame, up this frame
+//		5. Accumulate mouse deltas
+//		6. Check for special input combinations (quit, screenshot, etc.)
+//		7. Route input to appropriate handler based on context
+//		8. Clear one-frame flags (pressed, released)
+//
+//		Dead Zone Application (Analog Sticks):
+//		Function: ApplyDeadZone(rawValue, deadZone)
+//		1. Get raw analog value (-32768 to +32767)
+//		2. Normalize to -1.0 to +1.0
+//		3. If (abs(value) < deadZone): return 0.0
+//		4. Else:
+//		   - Rescale from [deadZone, 1.0] to [0.0, 1.0]
+//		   - value = (value - deadZone) / (1.0 - deadZone)
+//		   - Preserves full range outside dead zone
+//		5. Return adjusted value
+//
+//		Mouse Smoothing:
+//		- Store recent mouse deltas in circular buffer (8-16 samples)
+//		- Calculate weighted average:
+//		  * Recent samples weighted more heavily
+//		  * Older samples have lower weight
+//		- Result: Smoother camera movement, less jittery
+//
+//		Input Binding System:
+//		- Configuration file maps actions to keys/buttons
+//		- Example: "Jump" → Spacebar, Gamepad A Button
+//		- Runtime: Check if any bound input active
+//		- Allows player customization
+//
+// INPUT DEVICE DETECTION:
+//		Xbox Controller Detection:
+//		- DirectInput device enumeration
+//		- Check for specific product IDs:
+//		  * "Xbox 360 Controller"
+//		  * "Xbox One Controller"
+//		  * "ThrustMaster FireStorm Dual Power Gamepad"
+//		- If detected: Set ARX_XBOXPAD = 1
+//		- Configure button mapping for Xbox layout
+//
+//		SCID Device (Special Controller):
+//		- Proprietary controller interface
+//		- Attempt initialization
+//		- If fails: Set ARX_SCID = 0, continue without it
+//		- Optional device, not required for gameplay
+//
+//		Keyboard Always Required:
+//		- Initialization fails if keyboard unavailable
+//		- Critical for menu navigation even with gamepad
+//
+//		Mouse Fallback:
+//		- Attempt mouse initialization
+//		- If fails: Game still playable with keyboard/gamepad
+//		- Camera control via keyboard arrows
+//
+// DIRECTINPUT MODES:
+//		DXI_MODE_EXCLUSIF_ALLMSG:
+//		- Exclusive device access
+//		- All messages routed to game window
+//		- Used for gamepad to prevent OS interference
+//
+//		DXI_MODE_NONEXCLUSIF_OURMSG:
+//		- Non-exclusive access
+//		- Only window-specific messages processed
+//		- Used for keyboard to allow alt-tab
+//
+//		DXI_MODE_NONEXCLUSIF_ALLMSG:
+//		- Non-exclusive access
+//		- All messages processed
+//		- Used for mouse to allow window focus switching
+//
+// MOUSE MODES:
+//		Relative Mode (DXI_SetMouseRelative):
+//		- Reports movement delta, not absolute position
+//		- Ideal for first-person camera control
+//		- Cursor hidden and locked to window center
+//		- Movement accumulated as rotation delta
+//
+//		Absolute Mode:
+//		- Reports screen position coordinates
+//		- Used for menus and UI interaction
+//		- Cursor visible
+//		- Position used for click detection
+//
+//		Mode Switching:
+//		- Enter game: Switch to relative (camera control)
+//		- Open inventory: Switch to absolute (UI interaction)
+//		- Seamless transitions between modes
+//
+// SPECIAL INPUT HANDLING:
+//		Spell Gesture Recognition:
+//		- Mouse movement tracked during spell casting
+//		- Pattern matching algorithm:
+//		  * Sample positions at fixed intervals
+//		  * Normalize to remove scale variation
+//		  * Compare to known rune shapes
+//		  * Fuzzy matching for imprecise input
+//		- Successful match: Cast corresponding spell
+//
+//		Quick Save/Load:
+//		- F5: Quick save (check for valid location)
+//		- F6: Quick load (confirm dialog)
+//		- Disabled during combat or cinematics
+//
+//		Screenshot:
+//		- F12: Capture framebuffer to file
+//		- Save as TGA or BMP
+//		- Increment filename (screenshot001.tga, screenshot002.tga...)
+//
+//		Developer Keys:
+//		- Tilde (~): Open console
+//		- F1-F4: Debug visualization modes
+//		- Only active in debug builds
+//
+// CONFIGURATION:
+//		Key Bindings (from config file):
+//		- Movement: W/A/S/D or Arrow keys
+//		- Jump: Space
+//		- Crouch: Ctrl
+//		- Interact: E
+//		- Attack: Left Mouse Button
+//		- Block: Right Mouse Button
+//		- Inventory: I
+//		- Character Sheet: C
+//		- Spell Book: B
+//		- Map: M
+//		- Quick slots: 1-8
+//
+//		Mouse Settings:
+//		- Sensitivity: 0.1 to 10.0 multiplier
+//		- Invert Y-axis: Boolean toggle
+//		- Smoothing: 0 (off) to 10 (heavy)
+//		- Acceleration: Linear vs non-linear response
+//
+//		Gamepad Settings:
+//		- Left stick dead zone: 0.0 to 0.5 (default 0.15)
+//		- Right stick dead zone: 0.0 to 0.5 (default 0.15)
+//		- Trigger dead zone: 0.0 to 0.3 (default 0.1)
+//		- Vibration strength: 0% to 100%
+//		- Button layout: Xbox, PlayStation, Custom
+//
+// INTEGRATION:
+//		Uses MERCURY DXI system for DirectInput abstraction
+//		Coordinates with ARX_Menu2 for control configuration
+//		Integrates with ARX_Player for character movement
+//		Works with ARX_Interface for UI interaction
+//		Triggers ARX_Spells for gesture-based magic
+//
+// TYPICAL USAGE:
+//		Initialization (Game Startup):
+//		1. Call ARX_INPUT_Init(hInstance, hWnd)
+//		2. DirectInput initialized
+//		3. Keyboard acquired
+//		4. Mouse acquired and set to relative mode
+//		5. Gamepad detected and configured if present
+//		6. Load key bindings from config
+//		7. Ready to process input
+//
+//		Frame Update (Each Frame):
+//		1. Poll devices: DXI_UpdateInputDevices()
+//		2. Check keyboard: if (DXI_GetKeyState(DIK_W)) MoveForward()
+//		3. Get mouse delta: DXI_GetMouseMove(&dx, &dy)
+//		4. Rotate camera: camera.yaw += dx * sensitivity
+//		5. Check gamepad: if (DXI_GetJoyButton(JOY_A)) Jump()
+//		6. Process buffered text input for chat
+//
+//		Context Switch (Open Inventory):
+//		1. Game detects 'I' key pressed
+//		2. Pause game update
+//		3. Switch mouse to absolute mode
+//		4. Show cursor
+//		5. Enter inventory input mode
+//		6. Mouse clicks handled by UI system
+//		7. ESC or 'I' again: Close inventory, return to game mode
+//=============================================================================
 
 
 #include "ARX_Input.h"

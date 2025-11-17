@@ -24,18 +24,55 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 */
 #include <windows.h>
 
-///////////////////////////////////////////////////////////////////////////////
-//                                                                           //
-// Athena DLL entry point                                                    //
-//                                                                           //
-///////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
+// Athena_DLL.cpp - Athena Audio System DLL Entry Point & Stubs
+//////////////////////////////////////////////////////////////////////////////////////
+//
+// Description:
+//		Minimal DLL entry point and stub functions for Athena audio system
+//		Athena is the audio subsystem of Arx Fatalis, handling:
+//		- 3D positional audio
+//		- Music/ambient sound playback
+//		- Sound effects mixing
+//		- Audio streaming
+//		- Environmental audio effects
+//
+// Purpose:
+//		Provides DLL initialization when Athena is built as separate DLL
+//		Contains stub implementations for error handling
+//
+// Notes:
+//		ShowError() is a no-op stub - actual error handling likely in main exe
+//		In final game, Athena compiled directly into executable (not as DLL)
+//
+// Code: Arkane Studios
+//
+// Copyright (c) 1999-2010 ARKANE Studios SA. All rights reserved
+//////////////////////////////////////////////////////////////////////////////////////
 
-//PABO
+//=============================================================================
+// ShowError - Error Display Stub (No-Op)
+//=============================================================================
+// Description:
+//		Stub implementation of error display function
+//		Does nothing - actual error handling in main executable
+//
+// Parameters:
+//		Unnamed parameters (not used in stub)
+//
+// Returns:
+//		Always returns 0
+//
+// Notes:
+//		Comment "//PABO" suggests this is temporary/placeholder code
+//		Real error handling likely in HERMES (ShowError defined there)
+//
+//=============================================================================
 int ShowError(char *, char *, long)
 {
-	return 0;
+	return 0;		// No-op stub
 }
 
-
-
-
+//=============================================================================
+// END OF FILE
+//=============================================================================

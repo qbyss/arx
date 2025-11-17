@@ -41,19 +41,57 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //@@@    @@@  @@@ @@@@@                          @@            @@@                  //
 //            @@@ @@@                           @@             @@        STUDIOS    //
 //////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////
-// EERIEPhysicsBox
-///////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
+// EERIEPhysicsBox - Box-Based Physics and Collision
+//////////////////////////////////////////////////////////////////////////////////////
 //
 // Description:
-//	Provides funcs for 3D Object Physics (Box Based)
+//		Oriented bounding box (OBB) physics system for object collision detection
+//		Handles box-based collision, overlap testing, and physics simulation
+//		Used for characters, items, and interactive objects
 //
-// Updates: (date) (person) (update)
+// Purpose:
+//		- Create collision volumes for 3D objects (boxes)
+//		- Detect collisions between objects (OBB vs OBB)
+//		- Physics simulation (gravity, velocity, friction)
+//		- Collision response (bounce, slide, stop)
+//		- Raycasting against physics boxes
+//
+// Physics Box System:
+//		PHYSICS_BOX_DATA: Oriented box with position, rotation, extents
+//		Collision Detection: Separating Axis Theorem (SAT) for OBB
+//		Physics Simulation: Euler integration for motion
+//		Collision Response: Impulse-based response
+//
+// Box Representation:
+//		Position: Center point in world space
+//		Rotation: Orientation (angles or quaternion)
+//		Extents: Half-widths along X, Y, Z axes
+//		Axes: Local coordinate frame (3 perpendicular vectors)
+//
+// Collision Detection:
+//		Separating Axis Theorem (SAT):
+//		- Project boxes onto candidate separating axes
+//		- If projections don't overlap, boxes don't collide
+//		- Test axes: box1 axes (3), box2 axes (3), cross products (9)
+//		- Total: 15 potential separating axes
+//
+// Physics Simulation:
+//		Velocity: Linear motion vector
+//		Gravity: Downward acceleration (-9.8 m/s²)
+//		Friction: Opposes sliding motion
+//		Collision Response: Reflect velocity on collision normal
+//
+// Use Cases:
+//		- Character controller (player movement boxes)
+//		- Item collision (swords, shields, potions)
+//		- Movable objects (crates, barrels)
+//		- Trigger volumes (door sensors, traps)
 //
 // Code: Cyril Meynier
 //
 // Copyright (c) 1999 ARKANE Studios SA. All rights reserved
-///////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
 #include "EERIEPhysicsBox.h"
 #include "EERIEMath.h"
 

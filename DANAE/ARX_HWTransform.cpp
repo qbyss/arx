@@ -22,6 +22,32 @@ If you have questions concerning this license or the applicable additional terms
 ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 ===========================================================================
 */
+//=============================================================================
+// FILE: ARX_HWTransform.cpp
+//=============================================================================
+// Component: DANAE Game Engine - Hardware Transformation
+// Author: Cyril Meynier
+//
+// PURPOSE:
+//		Placeholder for hardware-accelerated vertex transformations.
+//		Originally intended for T&L (Transform and Lighting) support.
+//
+// CURRENT STATUS:
+//		Empty implementation - functions present but unused.
+//		Transformations handled by EERIE rendering pipeline instead.
+//		Kept for potential future hardware acceleration or compatibility.
+//
+// FUNCTIONS:
+//		ARX_HWTransform_Init: Initialize hardware transformation (empty)
+//		ARX_HWTransform_Kill: Cleanup (empty)
+//		ARX_HWTransform_Render: Render with hardware (empty)
+//
+// NOTE:
+//		This file is a stub. Actual transformations performed by:
+//		- EERIE rendering engine for vertex transformations
+//		- Direct3D fixed-function pipeline for legacy rendering
+//		- Software transformation fallback for compatibility
+//=============================================================================
 #include <stdio.h>
 #define DIRECTINPUT_VERSION 0x0700
 #include <dinput.h>

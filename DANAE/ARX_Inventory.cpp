@@ -42,13 +42,61 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //            @@@ @@@                           @@             @@        STUDIOS    //
 //////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////
-// ARX_Inventory
+// ARX_Inventory - Inventory Management System
 //////////////////////////////////////////////////////////////////////////////////////
 //
 // Description:
-//		ARX Inventories Management
+//		Complete inventory system for items, equipment, and containers
+//		Grid-based storage with drag/drop interface for player and NPCs
+//		Equipment slots, item stacking, weight management
 //
-// Updates: (date) (person) (update)
+// Purpose:
+//		- Player inventory management (grid-based)
+//		- NPC and container inventories
+//		- Equipment system (equip/unequip armor, weapons)
+//		- Item pickup and drop mechanics
+//		- Item stacking (arrows, gold, potions)
+//		- Weight and carrying capacity
+//		- Container interactions (chests, bags, corpses)
+//
+// Inventory System:
+//		Grid-Based Storage:
+//		- Items occupy rectangular grid slots (1x1, 1x2, 2x2, etc.)
+//		- Tetris-style inventory management
+//		- Drag and drop to rearrange items
+//		- Auto-stack similar items
+//
+//		Equipment Slots:
+//		- Head: Helmets, hats, crowns
+//		- Chest: Armor, robes, shirts
+//		- Legs: Leg armor, pants
+//		- Feet: Boots, shoes
+//		- Hands/Gloves: Gauntlets, gloves
+//		- Weapon slots: Right hand, left hand (shield)
+//		- Rings: Multiple ring slots
+//		- Amulet: Necklace slot
+//
+//		Item Management:
+//		- Add item to inventory (find free space)
+//		- Remove item from inventory
+//		- Move item between slots
+//		- Stack identical items
+//		- Split stacks
+//		- Drop item to world
+//		- Pick up item from world
+//
+// Weight System:
+//		Each item has weight value
+//		Total weight affects movement speed
+//		Carrying capacity based on Strength
+//		Overencumbered: Cannot run, slow movement
+//
+// Container Types:
+//		Player Inventory: Main character storage
+//		Backpack: Portable storage
+//		Chests: Static world containers
+//		Corpses: Dead NPC inventories (loot)
+//		Bags: Smaller portable containers
 //
 // Code: Cyril Meynier
 //
@@ -655,7 +703,7 @@ BOOL CanBePutInInventory(INTERACTIVE_OBJ * io)
 	sx = io->sizex;
 	sy = io->sizey;
 
-	// on essaie de le remettre à son ancienne place --------------------------
+	// on essaie de le remettre ï¿½ son ancienne place --------------------------
 	if (sInventory == 1 &&
 	        (sInventoryX >= 0) &&
 	        (sInventoryX <= INVENTORY_X - sx) &&
@@ -869,7 +917,7 @@ BOOL CanBePutInSecondaryInventory(INVENTORY_DATA * id, INTERACTIVE_OBJ * io, lon
 	sx = io->sizex;
 	sy = io->sizey;
 
-	// on essaie de le remettre à son ancienne place
+	// on essaie de le remettre ï¿½ son ancienne place
 	if (sInventory == 2 &&
 	        (sInventoryX >= 0) &&
 	        (sInventoryX <= id->sizex - sx) &&

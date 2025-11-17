@@ -22,14 +22,39 @@ If you have questions concerning this license or the applicable additional terms
 ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 ===========================================================================
 */
-///////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
+// ARX_Sound - Game Audio Integration and Management
+//////////////////////////////////////////////////////////////////////////////////////
 //
-// ARX_Sound.cpp
-// ARX Sound Management
+// Description:
+//		Game audio layer built on top of Athena audio system
+//		Manages sound effects, ambient audio, and 3D positional sounds for game objects
+//		Integrates audio with game events, NPCs, and interactive objects
+//
+// Purpose:
+//		- Play sound effects for game actions (footsteps, doors, combat)
+//		- Manage ambient audio (wind, water, dungeon atmosphere)
+//		- 3D positional audio for objects and NPCs
+//		- Integrate with Athena audio system
+//		- Audio resource management (load/unload samples)
+//
+// Audio Types:
+//		Sound Effects: One-shot sounds (sword swing, door open, item pickup)
+//		Ambient Sounds: Looping environmental audio (wind, water flow, fire crackling)
+//		3D Sounds: Positioned audio that changes with player position/orientation
+//		Speech: NPC dialog and player voice
+//		UI Sounds: Menu clicks, inventory sounds
+//
+// Integration:
+//		Uses Athena audio system for low-level playback
+//		Automatically handles 3D audio positioning
+//		Distance attenuation for realistic audio
+//		Sound occlusion for walls/obstacles
+//
+// Code: Cyril Meynier
 //
 // Copyright (c) 1999-2000 ARKANE Studios SA. All rights reserved
-//
-///////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
 #include <stdio.h>
 #include <list>
 
@@ -1401,7 +1426,7 @@ void ARX_SOUND_AmbianceRestorePlayList(void * _play_list, unsigned long size)
 	}
 }
 
-// PâBôMéJèMçA
+// Pï¿½Bï¿½Mï¿½Jï¿½Mï¿½A
 extern PakManager * pPakManager;
 static void ARX_SOUND_CreateEnvironments()
 {

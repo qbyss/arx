@@ -22,6 +22,33 @@ If you have questions concerning this license or the applicable additional terms
 ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 ===========================================================================
 */
+//////////////////////////////////////////////////////////////////////////////////////
+// EERIE_AVI - AVI Video Playback
+//////////////////////////////////////////////////////////////////////////////////////
+//
+// Description:
+//		AVI video file playback system for cutscenes and cinematics
+//		Uses DirectShow/ActiveMovie for video codec integration
+//		Handles video rendering, audio synchronization, and playback control
+//
+// Purpose:
+//		- Play intro videos and cutscenes
+//		- DirectShow filter graph management
+//		- Video rendering to window or surface
+//		- Audio/video synchronization
+//		- Playback controls (play, pause, stop, seek)
+//
+// DirectShow Integration:
+//		- IGraphBuilder: Construct filter graph
+//		- IMediaControl: Playback control (play/pause/stop)
+//		- IVideoWindow: Video rendering window
+//		- IMediaEvent: Playback event notifications
+//		- Supports various codecs (Cinepak, MPEG, etc.)
+//
+// Code: Arkane Studios
+//
+// Copyright (c) 1999 ARKANE Studios SA. All rights reserved
+//////////////////////////////////////////////////////////////////////////////////////
 //-----------------------------------------------------------------------------
 // Arkane Studios
 //-----------------------------------------------------------------------------

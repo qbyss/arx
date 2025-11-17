@@ -22,14 +22,83 @@ If you have questions concerning this license or the applicable additional terms
 ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 ===========================================================================
 */
-///////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
+// ARX_Spells - Magic System and Spell Management
+//////////////////////////////////////////////////////////////////////////////////////
 //
-// ARX_Spells.cpp
-// ARX Spells Management & Projectiles
+// Description:
+//		Complete magic system with spell casting, rune drawing, and spell effects
+//		Gesture-based magic with combinations of magic runes
+//		Dynamic spell effects with particles, lights, and sound
+//
+// Purpose:
+//		- Spell casting system with rune combinations
+//		- Active spell management (durations, targets, effects)
+//		- Spell projectiles (magic missile, fireball, etc.)
+//		- Continuous effects (invisibility, levitate, etc.)
+//		- Summoned creatures and objects
+//		- Mana management and casting costs
+//
+// Magic System:
+//		Rune Combinations:
+//		- Player draws runes with mouse gestures
+//		- Specific combinations create spells
+//		- Example: AAM (Create) + VITAE (Life) + TAAR (Projectile) = Magic Missile
+//		- Invalid combinations fizzle and waste mana
+//
+//		Spell Categories:
+//		- Level 1: Basic utility (Magic Sight, Ignit, Heal)
+//		- Level 2: Combat basics (Magic Missile, Detect Trap, Armor)
+//		- Level 3: Advanced (Fireball, Ice Projectile, Telekinesis)
+//		- Level 4: Powerful (Invisibility, Levitate, Mana Drain)
+//		- Level 5-10: Master spells (Mass Lightning, Summon Creature, etc.)
+//
+//		Spell Types:
+//		- Instant: Immediate effect (Heal, Harm)
+//		- Projectile: Travels and hits target (Magic Missile, Fireball)
+//		- Continuous: Lasts duration (Invisibility, Protection)
+//		- Summoning: Creates entity (Summon Creature, Create Food)
+//		- Area Effect: Affects region (Poison Cloud, Explosion)
+//
+// Rune System:
+//		10 Magic Runes:
+//		- AAM: Create/Make
+//		- CETRIUS: Space/Movement
+//		- COMUNICATUM: Communicate
+//		- COSUM: Object
+//		- FOLGORA: Lightning/Electric
+//		- FRIDD: Cold/Ice
+//		- KAOM: Protection
+//		- MEGA: Power/Increase
+//		- MORTE: Death/Harm
+//		- MOVIS: Movement
+//		- NHI: Negate/Remove
+//		- RHAA: Vision/Light
+//		- SPACIUM: Space
+//		- STREGUM: Magic
+//		- TAAR: Projectile
+//		- TEMPUS: Time
+//		- TERA: Earth
+//		- VITAE: Life/Heal
+//		- YOK: Fire
+//		- AKBAA: Demon (secret)
+//
+// Spell Effects:
+//		Visual: Particles, glows, trails, explosions
+//		Audio: Casting sounds, impact sounds, ambient loops
+//		Lighting: Dynamic lights for spell effects
+//		Physics: Projectile trajectory, area damage
+//
+// Spell Management:
+//		Active Spells: List of currently active effects
+//		Duration Tracking: Countdown timers for temporary spells
+//		Target Tracking: Which entity spell affects
+//		Stacking Rules: Can/can't stack same spell multiple times
+//
+// Code: Cyril Meynier
 //
 // Copyright (c) 1999-2000 ARKANE Studios SA. All rights reserved
-//
-///////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
 #include <ARX_Spells.h>
 
 #include <HERMESMain.h>
@@ -3079,7 +3148,7 @@ void ARX_SPELLS_Analyse()
 
 					if ( ( pente > 0.4f ) && ( pente < 2.5f ) ) //une diagonale
 					{
-						if ( ( dx < 0 ) && ( dy < 0 ) ) //on a bougé vers droite/bas
+						if ( ( dx < 0 ) && ( dy < 0 ) ) //on a bougï¿½ vers droite/bas
 						{
 							if ( lastdir != ADOWNRIGHT ) 
 							{
@@ -3087,7 +3156,7 @@ void ARX_SPELLS_Analyse()
 								cdir++;
 							}
 						}
-						else if ( ( dx > 0 ) && ( dy < 0 ) ) //on a bougé vers gauche/bas
+						else if ( ( dx > 0 ) && ( dy < 0 ) ) //on a bougï¿½ vers gauche/bas
 						{
 							if ( lastdir != ADOWNLEFT ) 
 							{
@@ -3095,7 +3164,7 @@ void ARX_SPELLS_Analyse()
 								cdir++;
 							}
 						}
-						else if ( ( dx < 0 ) && ( dy > 0 ) ) //on a bougé vers droite/haut
+						else if ( ( dx < 0 ) && ( dy > 0 ) ) //on a bougï¿½ vers droite/haut
 						{
 							if ( lastdir != AUPRIGHT ) 
 							{
@@ -3103,7 +3172,7 @@ void ARX_SPELLS_Analyse()
 								cdir++;
 							}
 						}
-						else if ( ( dx > 0 ) && ( dy > 0 ) ) //on a bougé vers gauche/haut
+						else if ( ( dx > 0 ) && ( dy > 0 ) ) //on a bougï¿½ vers gauche/haut
 						{
 							if ( lastdir != AUPLEFT ) 
 							{
@@ -3116,9 +3185,9 @@ void ARX_SPELLS_Analyse()
 					}
 				}
 
-				if ( abs( dx ) > abs( dy ) ) //mouvement latéral plus important
+				if ( abs( dx ) > abs( dy ) ) //mouvement latï¿½ral plus important
 				{
-					if ( dx < 0 ) //on a bougé vers la droite
+					if ( dx < 0 ) //on a bougï¿½ vers la droite
 					{
 						if ( lastdir != ARIGHT ) 
 						{
@@ -3126,7 +3195,7 @@ void ARX_SPELLS_Analyse()
 							cdir++;
 						}
 					}
-					else //on a bougé vers la gauche
+					else //on a bougï¿½ vers la gauche
 					{
 						if ( lastdir != ALEFT ) 
 						{
@@ -3137,7 +3206,7 @@ void ARX_SPELLS_Analyse()
 				}
 				else //mouvement vertical plus significatif
 				{
-					if ( dy < 0 ) //on a bougé vers le bas
+					if ( dy < 0 ) //on a bougï¿½ vers le bas
 					{
 						if ( lastdir != ADOWN ) 
 						{
@@ -3145,7 +3214,7 @@ void ARX_SPELLS_Analyse()
 							cdir++;
 						}
 					}
-					else //on a bougé vers le haut
+					else //on a bougï¿½ vers le haut
 					{
 						if ( lastdir != AUP ) 
 						{
@@ -8014,7 +8083,7 @@ void ARX_SPELLS_Update(LPDIRECT3DDEVICE7 m_pd3dDevice)
 			//---------------------------------------------------------------------------------------
 			//***************************************************************************************	
 			// LEVEL 2 -----------------------------------------------------------------------------
-			case SPELL_HEAL: // guérit les ennemis collés
+			case SPELL_HEAL: // guï¿½rit les ennemis collï¿½s
 			{
 				CSpellFx *pCSpellFX = spells[i].pSpellFx;
 

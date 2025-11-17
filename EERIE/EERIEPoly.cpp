@@ -42,16 +42,48 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //            @@@ @@@                           @@             @@        STUDIOS    //
 //////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////
-// EERIEPoly																	    //
+// EERIEPoly - Polygon Rendering and Management
 //////////////////////////////////////////////////////////////////////////////////////
-//																		    		//
-// Description:																		//
-//																					//
-// Updates: (date) (person) (update)												//
-//																					//
-// Code: Cyril Meynier																//
-//																					//
-// Copyright (c) 1999 ARKANE Studios SA. All rights reserved						//
+//
+// Description:
+//		Core polygon rendering system for EERIE 3D engine
+//		Handles triangles, quads, backface culling, clipping, and rendering
+//		Manages scene polygons for static level geometry and dynamic objects
+//
+// Purpose:
+//		- Polygon rendering pipeline (culling, clipping, rasterization)
+//		- Room-based scene management (portal rendering)
+//		- Backface culling for performance
+//		- Texture mapping and lighting calculations
+//		- Dynamic lighting on polygons (torches, spells, etc.)
+//		- Transparency and alpha blending
+//
+// Key Components:
+//		EERIEPOLY: Triangle structure with vertices, normals, UVs, lighting
+//		Room System: Divide world into rooms for culling
+//		Portal Rendering: Only render visible rooms through portals
+//		Dynamic Lights: Apply point lights to polygon vertices
+//		Texture Coordinates: UV mapping for textured polygons
+//
+// Rendering Pipeline:
+//		1. Frustum culling: Check if polygon is in view
+//		2. Backface culling: Skip polygons facing away
+//		3. Clipping: Clip polygons against near/far planes
+//		4. Lighting: Calculate vertex colors from lights
+//		5. Texture mapping: Apply textures with UV coords
+//		6. Rasterization: Draw to screen via DirectX
+//
+// Performance Optimizations:
+//		- Room-based culling (don't render distant rooms)
+//		- Backface culling (skip back-facing triangles)
+//		- Portal rendering (only visible areas)
+//		- Batch rendering (minimize state changes)
+//
+// Updates: (date) (person) (update)
+//
+// Code: Cyril Meynier
+//
+// Copyright (c) 1999 ARKANE Studios SA. All rights reserved
 //////////////////////////////////////////////////////////////////////////////////////
 //#define STRICT
 

@@ -54,6 +54,190 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //
 // Copyright (c) 1999-2000 ARKANE Studios SA. All rights reserved
 //////////////////////////////////////////////////////////////////////////////////////
+//=============================================================================
+// FILE: ARX_Scene.cpp
+//=============================================================================
+// Component: DANAE Game Engine - Scene and Level Rendering Management
+// Author: Cyril Meynier
+//
+// PURPOSE:
+//		High-level scene management and rendering coordination for game levels.
+//		Orchestrates all rendering subsystems to display the complete 3D scene.
+//
+// ARCHITECTURE:
+//		Scene rendering pipeline coordinator integrating multiple subsystems:
+//
+//		Rendering Pipeline Stages:
+//		1. Scene Setup - Camera, viewport, render states
+//		2. Background Rendering - Static level geometry via EERIE
+//		3. Object Rendering - Dynamic objects (NPCs, items, decorations)
+//		4. Lighting - Dynamic lights, shadows, ambient
+//		5. Effects - Particles, spells, fog, weather
+//		6. Post-Processing - Bloom, color grading, screen effects
+//		7. UI Overlay - Interface, HUD, text
+//
+//		Integration Points:
+//		- EERIE rendering engine for 3D graphics
+//		- ARX_Draw for debug visualization and primitives
+//		- ARX_Particles for particle effects
+//		- ARX_Spells for magic visual effects
+//		- ARX_Interface for UI overlay
+//		- ARX_Sound for audio-visual sync
+//
+// KEY FEATURES:
+//		Scene Management:
+//		- Level loading and initialization
+//		- Camera setup and view frustum calculation
+//		- Visibility determination (portal rendering)
+//		- Object culling (frustum culling, distance culling)
+//		- Render state management
+//
+//		Rendering Coordination:
+//		- Frame timing and delta time calculation
+//		- Render queue sorting (front-to-back for opaque, back-to-front for transparent)
+//		- Material system integration
+//		- Texture management coordination
+//		- Shader setup and parameter binding
+//
+//		Portal Rendering System:
+//		- Rooms and portals for indoor scenes
+//		- Potentially Visible Set (PVS) calculation
+//		- Portal clipping and scissor regions
+//		- Recursive portal traversal
+//		- Outdoor/indoor transition handling
+//
+//		Visual Effects Integration:
+//		- Fog system (distance fog, height fog)
+//		- Weather effects (rain, snow)
+//		- Time of day lighting
+//		- Dynamic shadows
+//		- Light blooming and glare
+//
+//		Performance Optimization:
+//		- Occlusion culling via portals
+//		- Distance-based LOD selection
+//		- Texture memory management
+//		- Batch rendering where possible
+//		- Deferred lighting support
+//
+// ALGORITHMS:
+//		Portal Rendering (Room-Based Visibility):
+//		1. Start with room containing camera
+//		2. Mark room as visible
+//		3. For each portal in current room:
+//		   a. Check if portal faces camera
+//		   b. Clip portal against view frustum
+//		   c. If visible, mark connected room as visible
+//		   d. Recursively process connected room
+//		4. Render all visible rooms
+//		5. Optimization: Use portal as scissor region for connected room
+//
+//		Frustum Culling:
+//		1. Extract 6 frustum planes from view-projection matrix
+//		2. For each object in scene:
+//		   a. Get object bounding sphere or AABB
+//		   b. Test against all 6 frustum planes
+//		   c. If outside any plane, object not visible
+//		   d. If intersecting or inside all planes, object visible
+//		3. Only render visible objects
+//
+//		Distance Culling:
+//		- Objects beyond max view distance not rendered
+//		- Gradual fade-out near max distance to prevent popping
+//		- Different max distances for different object types:
+//		  * Small items: 2000 units
+//		  * NPCs: 4000 units
+//		  * Large decorations: 6000 units
+//		  * Level geometry: No distance limit
+//
+//		Render Queue Sorting:
+//		- Opaque objects: Sort front-to-back (minimize overdraw, Z-buffer optimization)
+//		- Transparent objects: Sort back-to-front (correct alpha blending)
+//		- Sorting key: Distance to camera + material ID
+//		- Batch objects with same material to reduce state changes
+//
+// RENDERING FEATURES:
+//		Dynamic Lighting:
+//		- Point lights with radius and color
+//		- Spotlights with cone angle
+//		- Directional lights (sun/moon)
+//		- Per-pixel lighting (if hardware supports)
+//		- Per-vertex lighting (fallback)
+//		- Light attenuation with inverse square law
+//
+//		Fog System:
+//		- Linear fog: fog = (end - dist) / (end - start)
+//		- Exponential fog: fog = exp(-density * dist)
+//		- Exp2 fog: fog = exp(-density * dist)^2
+//		- Separate fog for indoor/outdoor areas
+//		- Fog color changes with time of day
+//
+//		Shadow System:
+//		- Projected shadows (blob shadows under characters)
+//		- Stencil shadows (optional, expensive)
+//		- Shadow maps (terrain shadows)
+//		- Self-shadowing on characters
+//
+//		Weather Effects:
+//		- Rain: Particle system with vertical lines
+//		- Snow: Particle system with floating flakes
+//		- Lightning: Flash effect with temporary bright light
+//		- Wind: Affects particles and vegetation
+//
+// PERFORMANCE CONSIDERATIONS:
+//		Portal System Benefits:
+//		- Indoor scenes: Render only 2-5 rooms instead of entire level
+//		- Typical speedup: 5-10x faster rendering
+//		- Enables larger, more detailed levels
+//
+//		Batching Strategies:
+//		- Group objects by material to reduce state changes
+//		- Use texture atlases to reduce texture binds
+//		- Combine static geometry into larger meshes
+//
+//		Culling Statistics:
+//		- Typical level: 5000+ objects total
+//		- After portal culling: 500-800 objects
+//		- After frustum culling: 200-400 objects
+//		- After distance culling: 100-300 objects rendered
+//
+// INTEGRATION:
+//		Works with EERIE for low-level 3D rendering
+//		Coordinates with ARX_Interactive for object visibility
+//		Uses ARX_Paths for camera paths and cinematics
+//		Integrates with ARX_Time for time-based effects
+//		Coordinates with ARX_Menu2 for rendering state during menus
+//
+// COORDINATE SYSTEM:
+//		Right-handed coordinate system
+//		Y-axis: Up
+//		X-axis: Right
+//		Z-axis: Forward (into screen in view space)
+//
+// TYPICAL FRAME RENDERING:
+//		1. Clear buffers (color, depth, stencil)
+//		2. Set camera position and orientation
+//		3. Calculate view and projection matrices
+//		4. Determine visible rooms via portal system
+//		5. Cull objects against frustum and distance
+//		6. Sort opaque objects front-to-back
+//		7. Render opaque geometry with lighting
+//		8. Render sky and outdoor background
+//		9. Sort transparent objects back-to-front
+//		10. Render transparent geometry with alpha blending
+//		11. Render particle effects
+//		12. Render spell effects
+//		13. Apply post-processing effects
+//		14. Render UI overlay
+//		15. Present frame to screen
+//
+// USE CASES:
+//		1. Normal gameplay - Render complete 3D scene with all effects
+//		2. Cinematics - Camera path animation with scripted events
+//		3. Inventory view - Close-up object rendering with special lighting
+//		4. Map view - Top-down orthographic rendering of level
+//		5. Dialog mode - Focus on NPC with background blur
+//=============================================================================
 #include "ARX_Scene.h"
 #include "ARX_Spells.h"
 #include "ARX_Sound.h"

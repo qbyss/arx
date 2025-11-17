@@ -42,18 +42,59 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //            @@@ @@@                           @@             @@        STUDIOS    //
 //////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////
-// EERIELinkedObj
+// EERIELinkedObj - Object Hierarchy and Parenting
 //////////////////////////////////////////////////////////////////////////////////////
 //
 // Description:
-//		Manages Objects linked to other objects
+//		Parent-child object hierarchy system for connected objects
+//		Allows objects to follow and transform with their parents
+//		Used for weapons in hands, items on belts, riders on horses
 //
-// Updates: (date) (person) (update)
+// Purpose:
+//		- Attach objects to skeleton bones (weapon to hand)
+//		- Parent-child transformation inheritance
+//		- Automatic position/rotation updates
+//		- Detach objects when dropped
+//		- Multi-level hierarchies (sword → hand → arm → body)
+//
+// Linked Object System:
+//		Parent: The object being followed (e.g., character)
+//		Child: The object following parent (e.g., sword)
+//		Link Bone: Which bone child attaches to (e.g., right hand)
+//		Local Transform: Offset from bone position
+//		World Transform: Final position in world space
+//
+// Transformation Inheritance:
+//		Child transforms in parent's coordinate space
+//		Parent moves → child automatically follows
+//		Parent rotates → child rotates with it
+//		Hierarchical: Changes propagate down chain
+//
+// Linking Process:
+//		1. Specify parent object and bone name
+//		2. Set child's local offset/rotation
+//		3. Each frame: Calculate parent bone world transform
+//		4. Apply local transform to get child world position
+//		5. Render child at calculated position
+//
+// Use Cases:
+//		- Weapons in hands (sword attached to right hand bone)
+//		- Items on belt (potion attached to hip bone)
+//		- Shields on back (shield attached to spine bone)
+//		- Riders on horses (player attached to horse saddle bone)
+//		- Dropped items (detach from bone, become independent)
+//		- Particle emitters (flames attached to torch bone)
+//
+// Link Types:
+//		Bone Link: Attach to animated skeleton bone
+//		Object Link: Attach to another object's center
+//		Fixed Link: Rigid attachment (no relative motion)
+//		Flexible Link: Spring/soft attachment (chains, ropes)
 //
 // Code: Cyril Meynier
 //
 // Copyright (c) 1999 ARKANE Studios SA. All rights reserved
-/////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
 
 #include "EERIELinkedObj.h"
 #include "EERIEObject.h"

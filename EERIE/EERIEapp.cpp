@@ -42,15 +42,57 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //            @@@ @@@                           @@             @@        STUDIOS    //
 //////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////
-// EERIEApp
+// EERIEApp - Application Framework and Initialization
 //////////////////////////////////////////////////////////////////////////////////////
 //
 // Description:
+//		Main application framework for EERIE 3D engine
+//		Handles DirectX initialization, window creation, and main loop
+//		Base class for game application (EERIEApp)
 //
-// Updates: (date) (person) (update)
+// Purpose:
+//		- Initialize DirectX (Direct3D, DirectDraw)
+//		- Create and manage application window
+//		- Handle device enumeration and selection
+//		- Manage video modes and display settings
+//		- Provide main rendering loop
+//		- Handle device loss and restoration
+//
+// Key Components:
+//		EERIEApp: Base application class (extended by game)
+//		DirectX Setup: Initialize D3D device, surfaces, viewport
+//		Window Management: Create window, message pump
+//		Device Enumeration: List available 3D devices
+//		Video Mode Selection: Resolution, bit depth, refresh rate
+//
+// Initialization Sequence:
+//		1. Create application window (Windows API)
+//		2. Initialize COM (CoInitialize)
+//		3. Create DirectDraw object
+//		4. Enumerate display modes and 3D devices
+//		5. Select video mode (resolution, bit depth)
+//		6. Create DirectDraw surfaces (primary, backbuffer, Z-buffer)
+//		7. Create Direct3D device
+//		8. Initialize viewport and render states
+//		9. Load resources (textures, models)
+//		10. Enter main loop (render, update, handle messages)
+//
+// Device Management:
+//		Device Enumeration: List all available D3D devices (HAL, REF, etc.)
+//		Device Selection: Choose best device (hardware accelerated preferred)
+//		Fullscreen vs Windowed: Toggle display modes
+//		Device Loss: Handle Alt+Tab, mode changes
+//		Device Restoration: Recreate surfaces and reload resources
+//
+// Main Loop:
+//		while (running):
+//			Process Windows messages (input, close, etc.)
+//			Update game state (physics, AI, animation)
+//			Render frame (3D scene, UI)
+//			Present to screen (flip buffers)
 //
 // Code:	Cyril Meynier
-//			Sébastien Scieux	(Zbuffer)
+//			SÃ©bastien Scieux	(Z-buffer)
 //			Didier Pedreno		(ScreenSaver Problem Fix)
 //
 // Copyright (c) 1999 ARKANE Studios SA. All rights reserved
@@ -296,7 +338,7 @@ HRESULT CD3DApplication::Create(HINSTANCE hInst, TCHAR * strCmdLine)
 		m_bActive = TRUE;
 	}
 
-	// à supprimer au final
+	// ï¿½ supprimer au final
 	if (CreationFlags & WCF_ACCEPTFILES)
 		DragAcceptFiles(m_hWnd, TRUE);
 

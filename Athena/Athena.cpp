@@ -22,24 +22,79 @@ If you have questions concerning this license or the applicable additional terms
 ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 ===========================================================================
 */
-///////////////////////////////////////////////////////////////////////////////
-//                                                                           //
-// TODO                                                                      //
-//                                                                           //
-// Finish reverb implementation                                              //
-// Keep finished instances a while before deleting in case we need it again  //
-// Abstract driver API for testing other libs than DirectSound               //
-// Finish ASF format implementation                                          //
-//                                                                           //
-// Ambiance                                                                  //
-// Make sure global 3D localisation and multiple keys / track works properly //
-//                                                                           //
-///////////////////////////////////////////////////////////////////////////////
-#pragma comment(lib, "dxguid.lib")
-#pragma comment(lib, "dsound.lib")
-#pragma comment(lib, "eaxguid.lib")
-#pragma comment(lib, "implode.lib")
-#pragma comment(lib, "winmm.lib")
+
+//////////////////////////////////////////////////////////////////////////////////////
+// Athena.cpp - Main Athena Audio System Public API
+//////////////////////////////////////////////////////////////////////////////////////
+//
+// Description:
+//		Main public interface for Athena audio system
+//		Athena is the complete audio subsystem of Arx Fatalis
+//		Provides high-level API for all audio functionality
+//
+// Purpose:
+//		- Initialize/shutdown DirectSound and audio system
+//		- Create and manage audio mixers (volume groups)
+//		- Load and play samples (sound effects)
+//		- Create and control ambiances (multi-track soundscapes)
+//		- Manage 3D audio and environmental effects (EAX)
+//		- Update audio system each frame
+//		- Handle threading and synchronization
+//
+// Athena Architecture:
+//		DirectSound Device & Primary Buffer (Windows audio)
+//		├── DirectSound3D Listener (player's ears in 3D space)
+//		├── EAX Environment (reverb/acoustic effects)
+//		├── Mixers (hierarchical volume control groups)
+//		│   ├── Master Mixer
+//		│   ├── SFX Mixer
+//		│   ├── Music Mixer
+//		│   └── Voice Mixer
+//		├── Samples (sound effect metadata)
+//		├── Instances (playing sounds with DirectSound buffers)
+//		└── Ambiances (multi-track ambient soundscapes)
+//
+// Key API Functions:
+//		aalInit() - Initialize audio system (create DirectSound device)
+//		aalClean() - Shutdown audio system (release all resources)
+//		aalUpdate() - Update instances, streaming, callbacks (call each frame)
+//
+//		aalCreateMixer() - Create volume group
+//		aalCreateSample() - Load sound sample metadata
+//		aalCreateAmbiance() - Load multi-track ambiance
+//
+//		aalPlaySample() - Play sound effect (creates Instance)
+//		aalPlayAmbiance() - Play ambient soundscape
+//
+//		aalSetListener*() - Set 3D listener position/orientation
+//		aalSetEnvironment() - Apply environmental reverb preset
+//
+// Threading:
+//		Mutex protects audio system from concurrent access
+//		MUTEX_TIMEOUT: 500ms for most operations
+//		MUTEX_ONUPDATE_TIMEOUT: 200ms for Update (shorter to avoid frame drops)
+//
+// TODO List (from original Arkane developers):
+//		- Finish reverb implementation
+//		- Keep finished instances a while before deleting (instance pooling)
+//		- Abstract driver API for testing other libs than DirectSound
+//		- Finish ASF format implementation (currently incomplete)
+//		- Make sure global 3D localization and multiple keys/track works
+//
+// Supported Audio Formats:
+//		WAV (PCM, ADPCM) - via Athena_Stream_WAV.cpp
+//		ASF (custom) - via Athena_Stream_ASF.cpp (incomplete)
+//
+// Code: Arkane Studios
+//
+// Copyright (c) 1999-2010 ARKANE Studios SA. All rights reserved
+//////////////////////////////////////////////////////////////////////////////////////
+
+#pragma comment(lib, "dxguid.lib")		// DirectX GUIDs
+#pragma comment(lib, "dsound.lib")		// DirectSound
+#pragma comment(lib, "eaxguid.lib")		// EAX GUIDs
+#pragma comment(lib, "implode.lib")		// PKZip compression
+#pragma comment(lib, "winmm.lib")		// Windows Multimedia
 
 #include <Athena.h>
 #include "Athena_Resource.h"
@@ -76,6 +131,50 @@ namespace ATHENA
 	// Global setup                                                              //
 	//                                                                           //
 	///////////////////////////////////////////////////////////////////////////////
+
+	//=============================================================================
+	// aalInit - Initialize Athena Audio System
+	//=============================================================================
+	// Description:
+	//		Initializes the Athena audio system with DirectSound and EAX support
+	//		Must be called before any other Athena functions
+	//
+	// Parameters:
+	//		param: Window handle (HWND) for DirectSound cooperative level
+	//
+	// Returns:
+	//		AAL_OK: Successfully initialized
+	//		AAL_ERROR_TIMEOUT: Mutex timeout (multi-threading)
+	//		AAL_ERROR_SYSTEM: DirectSound initialization failed
+	//
+	// Algorithm:
+	//		1. Acquire mutex lock (if multi-threading enabled)
+	//		2. Clean any existing audio system (aalClean)
+	//		3. Initialize COM (CoInitialize)
+	//		4. Initialize random number generator (for audio variation)
+	//		5. Create DirectSound device:
+	//		   - Try EAX-enabled DirectSound first (CLSID_EAXDirectSound)
+	//		   - Fallback to standard DirectSound if EAX unavailable
+	//		6. Initialize DirectSound device
+	//		7. Set cooperative level (DSSCL_PRIORITY for full control)
+	//		8. Store window handle
+	//		9. Release mutex lock
+	//
+	// EAX Support:
+	//		Tries to create EAX-enabled DirectSound (Creative Sound Blaster)
+	//		If successful: is_reverb_present = TRUE (enables reverb effects)
+	//		If fails: Falls back to standard DirectSound (no EAX effects)
+	//
+	// Cooperative Level:
+	//		DSSCL_PRIORITY: Allows format changes and full buffer control
+	//		Required for primary buffer access and 3D audio
+	//
+	// Notes:
+	//		- Call once at application startup
+	//		- Safe to call multiple times (calls aalClean first)
+	//		- Requires valid window handle for DirectSound cooperative level
+	//
+	//=============================================================================
 	aalError aalInit(aalVoid * param)
 	{
 		if (mutex && WaitForSingleObject(mutex, MUTEX_TIMEOUT) == WAIT_TIMEOUT)
@@ -157,37 +256,76 @@ namespace ATHENA
 		return AAL_OK;
 	}
 
+	//=============================================================================
+	// aalClean - Shutdown Athena Audio System
+	//=============================================================================
+	// Description:
+	//		Shuts down the Athena audio system and releases all resources
+	//		Stops all playing sounds and frees all DirectSound objects
+	//
+	// Returns:
+	//		AAL_OK: Successfully cleaned up
+	//
+	// Algorithm:
+	//		1. Acquire mutex lock (if multi-threading enabled)
+	//		2. Clean all resource lists (stops/deletes all resources):
+	//		   - Mixers: Stop all sounds and delete mixer hierarchy
+	//		   - Ambiances: Stop all ambiance playback
+	//		   - Instances: Stop all playing sounds and free buffers
+	//		   - Samples: Free all loaded sample data
+	//		   - Environments: Free all environment presets
+	//		3. Release DirectSound interfaces:
+	//		   - EAX environment property set
+	//		   - DirectSound3D listener
+	//		   - Primary DirectSound buffer
+	//		   - DirectSound device
+	//		4. Close debug log file (if open)
+	//		5. Free path strings (root, sample, ambiance, environment)
+	//		6. Reset configuration to defaults
+	//		7. Release and close mutex
+	//		8. Uninitialize COM (CoUninitialize)
+	//
+	// Notes:
+	//		- Safe to call multiple times (checks NULL before releasing)
+	//		- Automatically called by aalInit() before reinitializing
+	//		- Call at application shutdown
+	//		- Stops ALL playing sounds immediately (no fade-out)
+	//
+	//=============================================================================
 	aalError aalClean()
 	{
 		if (mutex) WaitForSingleObject(mutex, MUTEX_TIMEOUT);
 
-		_mixer.Clean(false);
-		_amb.Clean(false);
-		_inst.Clean(true);
-		_sample.Clean(false);
-		_env.Clean(false);
+		// Clean all resource lists (stops playback, frees resources)
+		_mixer.Clean(false);		// Stop all mixers
+		_amb.Clean(false);			// Stop all ambiances
+		_inst.Clean(true);			// Stop all instances (true = force clean)
+		_sample.Clean(false);		// Free all samples
+		_env.Clean(false);			// Free all environments
 
-		if (environment) environment->Release(), environment = NULL;
+		// Release DirectSound COM interfaces
+		if (environment) environment->Release(), environment = NULL;	// EAX property set
+		if (listener) listener->Release(), listener = NULL;			// 3D listener
+		if (primary) primary->Release(), primary = NULL;				// Primary buffer
+		if (device) device->Release(), device = NULL;					// DirectSound device
 
-		if (listener) listener->Release(), listener = NULL;
-
-		if (primary) primary->Release(), primary = NULL;
-
-		if (device) device->Release(), device = NULL;
-
+		// Close debug log
 		if (debug_log) fclose(debug_log), debug_log = NULL;
 
+		// Free path strings
 		free(root_path), root_path = NULL;
 		free(sample_path), sample_path = NULL;
 		free(ambiance_path), ambiance_path = NULL;
 		free(environment_path), environment_path = NULL;
+
+		// Reset configuration to defaults
 		stream_limit_ms = AAL_DEFAULT_STREAMLIMIT;
 		session_start = GetTickCount();
 		session_time = 0;
 		is_reverb_present = AAL_UFALSE;
 
+		// Release mutex and uninitialize COM
 		if (mutex) ReleaseMutex(mutex), CloseHandle(mutex), mutex = NULL;
-
 		CoUninitialize();
 
 		return AAL_OK;
@@ -644,13 +782,60 @@ namespace ATHENA
 	long MXupdate = 0;
 	long MXpos = 0;
 
-
+	//=============================================================================
+	// aalUpdate - Per-Frame Audio System Update
+	//=============================================================================
+	// Description:
+	//		Main update function called each frame to update all active audio
+	//		Handles instances, ambiances, 3D audio, and resource cleanup
+	//
+	// Returns:
+	//		AAL_OK: Update successful
+	//		AAL_ERROR_TIMEOUT: Mutex timeout (multi-threading)
+	//
+	// Algorithm:
+	//		1. Acquire mutex lock (if multi-threading enabled)
+	//		2. Update global session timer (session_time)
+	//		3. Update all instances:
+	//		   - Call Instance::Update() for streaming, callbacks, etc.
+	//		   - Delete idled instances (finished playing, not looping)
+	//		4. Update all ambiances:
+	//		   - Call Ambiance::Update() for fading, track management
+	//		5. Commit 3D audio changes (if 3D listener exists):
+	//		   - DirectSound3D::CommitDeferredSettings()
+	//		   - Applies all 3D position/velocity/direction changes at once
+	//		6. Release mutex lock
+	//
+	// Per-Frame Responsibilities:
+	//		Instances:
+	//		- Refill streaming audio buffers
+	//		- Process audio callbacks
+	//		- Track playback time and loop counts
+	//		- Distance cull 3D sounds outside range
+	//		- Cleanup finished instances
+	//
+	//		Ambiances:
+	//		- Process fade-in/fade-out
+	//		- Update track playback timing
+	//		- Manage multi-track coordination
+	//
+	//		3D Audio:
+	//		- Commit all deferred 3D settings changes
+	//		- DS3D_DEFERRED mode batches changes for efficiency
+	//
+	// Notes:
+	//		- MUST be called every frame for proper audio playback
+	//		- Typically called in game main loop
+	//		- Streaming will stutter if not called frequently enough
+	//		- 3D audio updates only apply when CommitDeferredSettings() called
+	//
+	//=============================================================================
 	aalError aalUpdate()
 	{
 		if (mutex && WaitForSingleObject(mutex, MUTEX_TIMEOUT) == WAIT_TIMEOUT)
 			return AAL_ERROR_TIMEOUT;
 
-		// Update global timer
+		// Update global timer (milliseconds since aalInit)
 		session_time = GetTickCount() - session_start;
 
 		aalULong i;
@@ -1463,6 +1648,65 @@ namespace ATHENA
 	//                                                                           //
 	///////////////////////////////////////////////////////////////////////////////
 
+	//=============================================================================
+	// aalSamplePlay - Play Sound Sample
+	//=============================================================================
+	// Description:
+	//		Plays a sound sample (short audio clip like footsteps, weapons, etc.)
+	//		Creates instance if needed, reuses existing instance if possible
+	//
+	// Parameters:
+	//		sample_id: [IN/OUT] Sample ID (lower 16 bits) + Instance ID (upper 16 bits)
+	//		           On return, contains combined sample+instance ID for control
+	//		channel: Playback channel (mixer, volume, pitch, pan, 3D position, etc.)
+	//		play_count: Number of times to play (0 = infinite loop, 1 = play once)
+	//
+	// Returns:
+	//		AAL_OK: Successfully started playback
+	//		AAL_ERROR_TIMEOUT: Mutex timeout (multi-threading)
+	//		AAL_ERROR_HANDLE: Invalid sample ID or mixer ID
+	//		AAL_ERROR_SYSTEM: Instance creation/initialization failed
+	//
+	// Algorithm:
+	//		1. Extract sample ID from combined sample_id
+	//		2. Check if existing instance can be reused:
+	//		   - Instance exists, same sample, same flags?
+	//		   - AAL_FLAG_RESTART: Stop and restart instance
+	//		   - AAL_FLAG_ENQUEUE: Add loops to playing instance
+	//		   - Instance idled: Update parameters and reuse
+	//		3. If no reusable instance:
+	//		   - Create new Instance object
+	//		   - Check if other instances of this sample exist (share buffers)
+	//		   - Initialize with sample or copy from existing instance
+	//		   - Add to instance list
+	//		4. Combine sample ID + instance ID into sample_id (for caller to control)
+	//		5. Start playback with Instance::Play()
+	//
+	// Instance Reuse:
+	//		Athena tries to reuse instances to reduce DirectSound buffer creation:
+	//		- If instance exists and is idled: reuse it
+	//		- If instance playing and ENQUEUE flag: add loops
+	//		- If instance playing and RESTART flag: stop and restart
+	//		- Otherwise: create new instance
+	//
+	// Instance Sharing:
+	//		If multiple instances of same sample exist:
+	//		- Second instance can share DirectSound buffer from first
+	//		- Reduces memory usage for repeated sounds (gunfire, footsteps)
+	//		- Init(existing_instance, channel) clones buffer
+	//
+	// Return Value (sample_id):
+	//		Combined ID with sample and instance indices:
+	//		- Lower 16 bits: Sample ID (unchanged)
+	//		- Upper 16 bits: Instance ID (newly created or reused)
+	//		- Use for aalSampleStop(), aalSetSampleVolume(), etc.
+	//
+	// Notes:
+	//		- Most common API call for playing game sound effects
+	//		- Automatically manages instance lifecycle
+	//		- Supports 2D and 3D audio via channel.flags
+	//
+	//=============================================================================
 	aalError aalSamplePlay(aalSLong & sample_id, const aalChannel & channel, const aalULong & play_count)
 	{
 		if (mutex && WaitForSingleObject(mutex, MUTEX_TIMEOUT) == WAIT_TIMEOUT)
@@ -1892,3 +2136,7 @@ namespace ATHENA
 	}
 
 }//ATHENA::
+
+//=============================================================================
+// END OF FILE
+//=============================================================================

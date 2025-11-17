@@ -54,6 +54,193 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //
 // Copyright (c) 1999-2000 ARKANE Studios SA. All rights reserved
 //////////////////////////////////////////////////////////////////////////////////////
+//=============================================================================
+// FILE: ARX_Paths.cpp
+//=============================================================================
+// Component: DANAE Game Engine - Path and Waypoint System
+// Author: Cyril Meynier
+//
+// PURPOSE:
+//		Manages predefined paths for NPC patrol routes, scripted sequences,
+//		and cinematic camera movements. Provides waypoint-based navigation.
+//
+// ARCHITECTURE:
+//		Path system with waypoints and path following:
+//
+//		Path Structure (ARX_PATH):
+//		- Array of waypoints (3D positions)
+//		- Path properties: name, flags, interpolation type
+//		- Associated actions/scripts at each waypoint
+//		- Looping vs one-shot paths
+//		- Path zone triggers
+//
+//		Path Waypoints:
+//		- Position (EERIE_3D)
+//		- Timing information (wait time at waypoint)
+//		- Optional rotation target (for NPCs/camera)
+//		- Script events triggered on arrival
+//		- Next waypoint index (for branching paths)
+//
+//		Path Types:
+//		- NPC Patrol: Repeating path for guard/creature
+//		- Scripted Sequence: One-time path for cutscene
+//		- Camera Path: Cinematic camera movement
+//		- Platform Movement: Moving platform path
+//
+// KEY FEATURES:
+//		Path Creation and Management:
+//		- ARX_PATHS_AddNew: Create new path at position
+//		- Add/remove waypoints dynamically
+//		- Named paths for script reference
+//		- Path deletion and cleanup
+//		- Global path array (ARXpaths)
+//
+//		Path Following:
+//		- Current waypoint index tracking
+//		- Progress along path (0.0 to 1.0)
+//		- Interpolation between waypoints (linear, spline, bezier)
+//		- Speed control and timing
+//		- Pause/resume capability
+//		- Loop vs one-shot behavior
+//
+//		Cinematic Camera System (USE_CINEMATICS_PATH):
+//		- Camera follows predefined path
+//		- Smooth interpolation between waypoints
+//		- Look-at target override
+//		- Field of view animation
+//		- Transition from/to gameplay camera
+//		- MASTER_CAMERA_STRUCT for cinematic control
+//
+//		NPC Path Assignment:
+//		- Assign path to NPC via script
+//		- NPC follows waypoints automatically
+//		- Waiting at waypoints
+//		- Path completion events
+//		- Repath on interruption (player spotted, combat)
+//
+//		Interpolation Methods:
+//		- Linear: Straight lines between waypoints
+//		- Catmull-Rom Spline: Smooth curves through waypoints
+//		- Bezier: Control points for curved paths
+//		- Ease-in/Ease-out: Acceleration at path start/end
+//
+// ALGORITHMS:
+//		Path Following Update:
+//		1. Get current waypoint and next waypoint
+//		2. Calculate progress between waypoints (time-based)
+//		3. Interpolate position:
+//		   - Linear: pos = lerp(wp1, wp2, progress)
+//		   - Spline: pos = catmullRom(wp0, wp1, wp2, wp3, progress)
+//		4. Update follower position
+//		5. Check if reached next waypoint (progress >= 1.0)
+//		6. If reached:
+//		   a. Trigger waypoint script event
+//		   b. Wait at waypoint if specified
+//		   c. Advance to next waypoint
+//		   d. If looping and at end: Go to waypoint 0
+//		   e. If not looping and at end: Stop path
+//
+//		Catmull-Rom Spline Interpolation:
+//		Given waypoints: P0, P1, P2, P3
+//		Interpolate between P1 and P2 using P0 and P3 as control points
+//
+//		Formula:
+//		pos = 0.5 * ((2*P1) +
+//		             (-P0 + P2) * t +
+//		             (2*P0 - 5*P1 + 4*P2 - P3) * t^2 +
+//		             (-P0 + 3*P1 - 3*P2 + P3) * t^3)
+//
+//		Where t = progress (0.0 to 1.0)
+//		Result: Smooth curve passing through all waypoints
+//
+//		Cinematic Camera Path:
+//		1. Get camera path from level data
+//		2. Calculate progress based on time: progress = elapsed / totalDuration
+//		3. Find waypoint segment: segment = floor(progress * numWaypoints)
+//		4. Calculate local progress within segment
+//		5. Interpolate camera position with spline
+//		6. Calculate camera orientation:
+//		   - If look-at target: Orient toward target
+//		   - Else: Use tangent of path (face forward)
+//		7. Apply field of view animation if specified
+//		8. Render scene from camera position
+//
+//		NPC Patrol Path:
+//		1. NPC reaches waypoint
+//		2. If waypoint has wait time: Wait for duration
+//		3. If waypoint has rotation: Turn to face direction
+//		4. If waypoint has script: Execute script event
+//		5. Move toward next waypoint:
+//		   - Use ARX_NPC movement system
+//		   - Navigate around obstacles
+//		   - If blocked: Attempt to return to path
+//		6. Repeat until path complete or interrupted
+//
+// CINEMATIC SYSTEM:
+//		Master Camera (MASTER_CAMERA_STRUCT):
+//		- Alternative camera during cinematics
+//		- Overrides player camera
+//		- Position, orientation, FOV control
+//		- Smooth blending to/from gameplay camera
+//		- USE_CINEMATICS_CAMERA flag enables cinematic mode
+//
+//		Camera Path Playback:
+//		- Script triggers: "PLAY_CAMERA_PATH path_name"
+//		- Camera smoothly transitions to path start
+//		- Follows path with interpolation
+//		- Player input disabled during playback
+//		- Ends with blend back to player camera
+//		- Or cuts directly if specified
+//
+//		Path Hierarchy (ARX_PATHS_HIERARCHYMOVE):
+//		- Parent-child relationships between paths
+//		- Child paths move relative to parent
+//		- Used for moving platforms with NPCs
+//		- Platform path = parent, NPC path = child
+//		- NPC maintains relative position to moving platform
+//
+// PATH FLAGS AND OPTIONS:
+//		Path Flags:
+//		- LOOP: Path repeats from beginning when finished
+//		- ONCE: Path executes once then stops
+//		- REVERSE: Path reverses direction at end
+//		- HIDDEN: Path not visible in editor
+//		- LOCKED: Path cannot be modified
+//
+//		Waypoint Flags:
+//		- WAIT: Pause at waypoint for specified time
+//		- SCRIPT: Execute script on arrival
+//		- ROTATE: Turn to face specific direction
+//		- ZONE_TRIGGER: Activate zone when reached
+//
+// INTEGRATION:
+//		Uses HERMES for navigation mesh integration
+//		Works with ARX_NPC for character path following
+//		Coordinates with ARX_Interactive for moving objects
+//		Integrates with ARX_Script for waypoint events
+//		Uses ARX_Sound for position-based audio
+//		Works with ARX_Damages for path-based traps
+//		Coordinates with ARX_Equipment for cinematics
+//
+// PERFORMANCE:
+//		Path Limits:
+//		- Max paths: Configurable (typically 50-100)
+//		- Max waypoints per path: 50-100
+//		- Active path followers: 20-30 typical
+//
+//		Optimization:
+//		- Only update active paths
+//		- Distance culling for distant NPCs
+//		- Simplified interpolation for background characters
+//
+// USE CASES:
+//		1. Guard Patrol: NPC follows loop path around area
+//		2. Cutscene: Camera follows path showing story event
+//		3. Moving Platform: Elevator/boat follows path
+//		4. Scripted Event: NPC walks to specific locations
+//		5. Chase Sequence: Camera follows player on rails
+//		6. Trap Path: Swinging blade follows repeating arc
+//=============================================================================
 #include "ARX_Paths.h"
 #include "HERMESMain.h"
 

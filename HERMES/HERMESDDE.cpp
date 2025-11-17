@@ -41,11 +41,31 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //@@@    @@@  @@@ @@@@@                          @@            @@@                  //
 //            @@@ @@@                           @@             @@        STUDIOS    //
 //////////////////////////////////////////////////////////////////////////////////////
+// HERMESDDE.cpp - Dynamic Data Exchange Support (DISABLED)
+//////////////////////////////////////////////////////////////////////////////////////
+//
+// Description:
+//		Stub file for DDE (Dynamic Data Exchange) inter-process communication.
+//		All functionality has been removed/disabled - file contains only includes.
+//
+// Purpose:
+//		Originally intended for IPC between HERMES and other applications.
+//		DDE is a legacy Windows communication protocol predating COM.
+//		No longer used in current implementation.
+//
+// Notes:
+//		- File is effectively empty (whitespace only after includes)
+//		- Kept for historical/structural purposes
+//		- No active code or functions
+//
+//////////////////////////////////////////////////////////////////////////////////////
 
 #include "HERMESDDE.h"
 
 #define _CRTDBG_MAP_ALLOC
 #include <crtdbg.h>
+
+// [FILE CONTENTS REMOVED - DDE FUNCTIONALITY NOT IMPLEMENTED]
 
  
  

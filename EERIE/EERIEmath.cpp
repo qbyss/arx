@@ -42,10 +42,27 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //            @@@ @@@                           @@             @@        STUDIOS    //
 //////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////
-// EERIEMath
+// EERIEMath - 3D Mathematics and Vector Operations
 //////////////////////////////////////////////////////////////////////////////////////
 //
 // Description:
+//		Core 3D mathematics library for EERIE rendering engine
+//		Provides vector operations, matrix transformations, and geometric calculations
+//		Essential for 3D graphics, collision detection, and physics
+//
+// Purpose:
+//		- Vector math: dot product, cross product, normalization, distance
+//		- Matrix operations: rotation, translation, scaling, transformation
+//		- Angle calculations: YRotatePoint, RotatePoint, vectors to angles
+//		- Geometric utilities: point-in-polygon, intersections, projections
+//		- Quaternion operations: rotation interpolation (SLERP)
+//
+// Key Functions:
+//		Vector3D operations: Distance3D, Normalize, DotProduct, CrossProduct
+//		Point rotation: YRotatePoint (Y-axis), RotatePoint (arbitrary axis)
+//		Matrix math: MatrixMultiply, MatrixSetByVectors
+//		Angle conversion: VectorAngle, AngleBetweenVectors
+//		Projections: ProjectPoint3D (world to screen)
 //
 // Updates: (date) (person) (update)
 //
