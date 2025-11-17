@@ -22,6 +22,146 @@ If you have questions concerning this license or the applicable additional terms
 ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 ===========================================================================
 */
+//////////////////////////////////////////////////////////////////////////////////////
+// ARX_Loc.CPP - Localization and String Resource System
+//////////////////////////////////////////////////////////////////////////////////////
+//
+// Description:
+//		Localization system for Arx Fatalis supporting multiple languages
+//		Loads translated strings from INI-style text files
+//		Provides key-value lookup for all game text (UI, dialogue, items, etc.)
+//
+// Purpose:
+//		- Load localized strings from text files
+//		- Parse INI format ([section] key=value pairs)
+//		- Provide fast string lookup by section/key
+//		- Support multiple languages (English, French, German, Chinese, etc.)
+//		- Enable runtime language switching
+//
+// Key Responsibilities:
+//		- Parse localisation.ini format files
+//		- Extract [sections] and key=value pairs
+//		- Store strings in hash table for fast lookup
+//		- Handle Unicode/wide character strings
+//		- Support PAK file system integration
+//		- Manage memory for localized strings
+//
+// File Format:
+//		[section_name]
+//		key1=value1
+//		key2=value2
+//
+//		[another_section]
+//		key3=value3
+//
+//		Example:
+//		[system_menus]
+//		new_game=New Game
+//		load_game=Load Game
+//
+// Main Functions:
+//		ARX_Localisation_Init()    - Load localization files
+//		ARX_Localisation_Close()   - Cleanup localization data
+//		HERMES_UNICODE_GetProfileString() - Retrieve localized string
+//		HERMES_UNICODE_GetProfileSectionKeyCount() - Count keys in section
+//		ParseFile()                - Parse localisation text file
+//		ParseCurFile()             - Parse from HERMES file system
+//		ParseCurRep()              - Parse from HERMES directory
+//
+// Parsing Functions:
+//		isSection()    - Check if line is [section] header
+//		isKey()        - Check if line is key=value pair
+//		isNotEmpty()   - Check if line has content
+//		CleanSection() - Extract section name from [brackets]
+//		CleanKey()     - Extract key name from key=value
+//
+// Language Support:
+//		Loads files based on language setting:
+//		- "localisation_english.ini"
+//		- "localisation_french.ini"
+//		- "localisation_german.ini"
+//		- "localisation_chinese.ini"
+//		- etc.
+//
+// Hash Table Integration:
+//		- Uses CLocalisationHash for O(1) lookup
+//		- Key format: "section/key"
+//		- Returns Unicode strings (_TCHAR*)
+//		- Handles collisions gracefully
+//
+// String Retrieval:
+//		_TCHAR* text = HERMES_UNICODE_GetProfileString(
+//			L"system_menus",    // section
+//			L"new_game",        // key
+//			L"New Game",        // default
+//			buffer,             // output buffer
+//			bufferSize,         // buffer size
+//			NULL                // filename (uses loaded data)
+//		);
+//
+// Unicode Support:
+//		- Wide character strings (_TCHAR, wchar_t)
+//		- UTF-16 encoding for file contents
+//		- Compatible with ARX_Text rendering system
+//		- Supports international characters
+//
+// File Loading:
+//		- Loads from PAK archives via HERMES
+//		- Scans "localisation" directory
+//		- Supports multiple localisation files
+//		- Merges all files into single hash table
+//
+// Memory Management:
+//		- Strings stored in hash table
+//		- Hash table freed on ARX_Localisation_Close()
+//		- Temporary buffers cleaned during parsing
+//		- Max line size: 8096 characters
+//
+// Section Counting:
+//		- Can query number of keys in a section
+//		- Used for dynamic UI generation
+//		- Iterates through hash table entries
+//
+// Version Flags:
+//		GERMAN_VERSION  - German language build
+//		FRENCH_VERSION  - French language build
+//		CHINESE_VERSION - Chinese language build
+//		- Determines which localisation file to load
+//
+// Validation:
+//		- Checks for well-formed sections [name]
+//		- Validates key=value syntax
+//		- Ignores empty lines and comments
+//		- Handles malformed entries gracefully
+//
+// Integration:
+//		- Used by all game systems for text
+//		- ARX_Text uses for UI rendering
+//		- ARX_Speech uses for dialogue
+//		- Menus query for button labels
+//		- Item descriptions loaded from localisation
+//
+// Performance:
+//		- Hash table provides O(1) lookup
+//		- All strings loaded at startup
+//		- No runtime file I/O for lookups
+//		- Memory trade-off for speed
+//
+// Technical Notes:
+//		- Case-sensitive key matching
+//		- Whitespace trimmed from values
+//		- Supports = character in values
+//		- Section names stored without brackets
+//		- PAK_UNICODE_ functions for file access
+//
+// Dependencies:
+//		- ARX_LocHash.h (hash table implementation)
+//		- Arx_Config.h (language configuration)
+//		- HermesMain.h (PAK file system)
+//		- EERIEApp.h (application framework)
+//
+// Copyright (c) 1999-2010 ARKANE Studios SA. All rights reserved
+//////////////////////////////////////////////////////////////////////////////////////
 #include "eerieapp.h"
 #include "Hermesmain.h"
 #include "ARX_LocHash.h"

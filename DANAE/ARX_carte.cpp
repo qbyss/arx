@@ -22,6 +22,86 @@ If you have questions concerning this license or the applicable additional terms
 ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 ===========================================================================
 */
+//////////////////////////////////////////////////////////////////////////////////////
+// ARX_carte.CPP - Minimap Bitmap Generation System
+//////////////////////////////////////////////////////////////////////////////////////
+//
+// Description:
+//		Generates minimap bitmap images from 3D level geometry
+//		Creates top-down 2D map representation of game levels
+//		Outputs BMP files for use by ARX_Minimap display system
+//
+// Purpose:
+//		- Render level geometry to 2D top-down view
+//		- Generate minimap textures at development time
+//		- Calculate level bounds for map positioning
+//		- Save minimap as BMP file for runtime use
+//
+// C_ARX_Carte Class:
+//		Constructor(device, background, nbpix, width, height):
+//			- Analyzes level geometry (EERIE_BACKGROUND)
+//			- Calculates world bounds (minx/maxx, minz/maxz)
+//			- Sets up rendering parameters
+//
+//		Generate():
+//			- Renders top-down view of level
+//			- Projects 3D polygons to 2D map
+//			- Writes map.bmp file to level directory
+//
+// Map Generation Process:
+//		1. Scan all level polygons
+//		2. Find min/max X and Z coordinates (world bounds)
+//		3. Calculate pixels per meter ratio
+//		4. Project polygons to 2D top-down view
+//		5. Rasterize to bitmap
+//		6. Save as "map.bmp" in level folder
+//
+// Rendering:
+//		- Uses DirectX offscreen rendering
+//		- Top-down orthographic projection
+//		- Texture/color from original polygons
+//		- Fixed resolution based on nbpixels parameter
+//
+// File Output:
+//		- BMP format for compatibility
+//		- Saved to "Graph/Levels/Level<N>/map.bmp"
+//		- Used by ARX_Minimap at runtime
+//		- No compression (raw bitmap)
+//
+// Coordinate Mapping:
+//		- World space (X, Z) -> Map pixels (U, V)
+//		- Scales based on level size
+//		- Maintains aspect ratio
+//		- Centers map on level geometry
+//
+// Usage:
+//		iCreateMap flag triggers generation
+//		- Set during development/tools mode
+//		- Not used in final release
+//		- One-time generation per level
+//
+// Parameters:
+//		nbpix     - Pixels per meter resolution
+//		wrender   - Output width
+//		hrender   - Output height
+//		background - Level geometry data
+//
+// Integration:
+//		- Works with EERIE_BACKGROUND level format
+//		- Outputs consumed by ARX_Minimap
+//		- Part of level build pipeline
+//		- Development tool (not runtime)
+//
+// Technical Notes:
+//		- French comments ("Constructeur")
+//		- Offline tool for map generation
+//		- Uses DirectX for rendering
+//		- Outputs standard Windows BMP
+//
+// Code: ARX Team
+//
+// Copyright (c) 1999-2010 ARKANE Studios SA. All rights reserved
+//////////////////////////////////////////////////////////////////////////////////////
 #include <stdio.h>
 #include "danae.h"
 #include "ARX_carte.h"

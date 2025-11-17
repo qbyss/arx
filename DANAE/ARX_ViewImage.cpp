@@ -22,6 +22,146 @@ If you have questions concerning this license or the applicable additional terms
 ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 ===========================================================================
 */
+//////////////////////////////////////////////////////////////////////////////////////
+// ARX_ViewImage.CPP - Image Slideshow and Viewer System
+//////////////////////////////////////////////////////////////////////////////////////
+//
+// Description:
+//		Image slideshow presentation system for Arx Fatalis
+//		Displays sequential images with fade transitions
+//		Used for game ending credits, cutscenes, and image galleries
+//
+// Purpose:
+//		- Display sequences of images as slideshows
+//		- Fade in/out transitions between images
+//		- Timed automatic advancement
+//		- Skip on user input
+//		- Support BMP and JPG formats
+//
+// Key Responsibilities:
+//		- Load images from directory sequentially
+//		- Manage fade transitions (fade in/out)
+//		- Handle user input for skipping
+//		- Center images on screen
+//		- Time-based automatic progression
+//		- Cleanup and resource management
+//
+// ViewImage Class:
+//		Constructor(dir, ext):
+//			- Scans directory for numbered images
+//			- Loads quit0.bmp, quit1.bmp, etc.
+//			- Also checks for .jpg versions
+//			- Builds image list
+//
+//		DrawAllImage():
+//			- Main slideshow loop
+//			- Handles fade in/out
+//			- Displays each image
+//			- Processes input
+//			- Auto-advances after timer
+//
+//		Destructor:
+//			- Frees image filename list
+//			- Cleans up resources
+//
+// Slideshow Flow:
+//		State Machine (iAction):
+//			0 - Prepare fade in
+//			1 - Load next image texture
+//			2 - Fade in image
+//			3 - Display image (60 second timeout)
+//			4 - Fade out image
+//			Loop back to 0
+//
+// Fade System:
+//		- Linear fade using color multiplier
+//		- fColor ranges from 0.0 (black) to 1.0 (full)
+//		- Fade speed: 0.1% per frame time
+//		- bSens controls direction (true=in, false=out)
+//		- bActiveFade indicates transition in progress
+//
+// Image Loading:
+//		- Searches for "quit<N>.bmp" and "quit<N>.jpg"
+//		- Sequential numbering (quit0, quit1, quit2...)
+//		- Stops when file not found
+//		- Converts filenames to uppercase
+//		- Stores in vListImage vector
+//
+// Rendering:
+//		- Centers images on screen
+//		- Scales to fit if larger than screen
+//		- Uses EERIEDrawBitmap for rendering
+//		- Applies color fade via D3DRGB
+//		- Full-screen presentation
+//
+// User Interaction:
+//		- Any key press skips to next image
+//		- Polls all 256 keyboard keys
+//		- Uses DirectInput for input
+//		- Triggers fade out on input
+//
+// Timing:
+//		- 60 second display per image
+//		- Frame-time based fade speed
+//		- Uses ARX_TIME_Get() for timing
+//		- Automatic progression after timeout
+//
+// Use Cases:
+//		- Game ending credits/gallery
+//		- Cutscene image sequences
+//		- Instruction/tutorial slides
+//		- Concept art viewer
+//		- Development debug display
+//
+// StartImageDemo():
+//		- Convenience function
+//		- Loads images from "graph/interface/misc/"
+//		- Creates viewer, runs slideshow
+//		- Cleans up when done
+//
+// File Format Support:
+//		- BMP (Windows Bitmap) - priority format
+//		- JPG (JPEG) - fallback if no BMP
+//		- Loaded via MakeTCFromFile()
+//		- Converted to TextureContainer
+//
+// Screen Positioning:
+//		- Centers horizontally: (DANAESIZX - width) / 2
+//		- Centers vertically: (DANAESIZY - height) / 2
+//		- Clips to screen bounds
+//		- No scaling (displays at native size)
+//
+// Performance:
+//		- One image loaded at a time
+//		- Previous texture deleted before loading next
+//		- Minimal memory footprint
+//		- No image preloading/caching
+//
+// Technical Notes:
+//		- State machine architecture for flow control
+//		- Fade calculations use floating-point color
+//		- Input polling on every frame
+//		- Blocking presentation (takes control until done)
+//		- No background music/audio playback
+//
+// Limitations:
+//		- Fixed 60-second display time
+//		- No manual image navigation (forward/back)
+//		- Cannot pause slideshow
+//		- One fade speed for all images
+//		- No configurable transitions
+//		- Blocking operation (freezes game)
+//
+// Dependencies:
+//		- Danae.h (application framework)
+//		- EERIETexture.h (texture loading)
+//		- EERIEDraw.h (2D rendering)
+//		- ARX_Time.h (timing functions)
+//		- ARX_Menu2.h (menu integration)
+//		- HermesMain.h (PAK file system)
+//
+// Copyright (c) 1999-2010 ARKANE Studios SA. All rights reserved
+//////////////////////////////////////////////////////////////////////////////////////
 #include <d3d.h>
 #include "Danae.h"
 #include "ARX_ViewImage.h"

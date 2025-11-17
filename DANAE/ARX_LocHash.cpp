@@ -22,9 +22,109 @@ If you have questions concerning this license or the applicable additional terms
 ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 ===========================================================================
 */
-// Code: Didier Pédreno
-// todo remover les strIcmp
-
+//////////////////////////////////////////////////////////////////////////////////////
+// ARX_LocHash.CPP - Localization String Hash Table
+//////////////////////////////////////////////////////////////////////////////////////
+//
+// Description:
+//		Fast hash table implementation for localized string storage and lookup
+//		Powers the ARX_Loc localisation system with O(1) string retrieval
+//		Uses open addressing with linear probing for collision resolution
+//
+// Purpose:
+//		- Provide fast string lookup by key
+//		- Store thousands of localized strings efficiently
+//		- Minimize memory overhead
+//		- Support dynamic resizing (rehashing)
+//		- Enable quick section/key queries
+//
+// CLocalisationHash Class:
+//		- Hash table with power-of-2 size
+//		- Stores CLocalisation entries
+//		- Handles collisions via linear probing
+//		- Automatic rehashing when load factor high
+//		- Tracks collision statistics
+//
+// Key Functions:
+//		AddElement()    - Insert localized string
+//		Get()           - Retrieve string by section/key
+//		ReHash()        - Resize and rebuild hash table
+//		GetNbKeyInSection() - Count keys in a section
+//
+// Hash Algorithm:
+//		- djb2 string hash function
+//		- XOR-based combining for section+key
+//		- Modulo size via bit mask (iMask = iSize - 1)
+//		- Power-of-2 sizes for fast modulo
+//
+// Collision Handling:
+//		- Linear probing (check next slot)
+//		- Wraps around to beginning
+//		- Tracks collision count
+//		- Rehashes if too many collisions
+//
+// CLocalisation Entry:
+//		- pSection: Section name string
+//		- pKey: Key name string
+//		- pValue: Localized text value
+//		- Stored as linked entries in table
+//
+// Rehashing:
+//		- Triggered when load factor exceeds threshold
+//		- Doubles table size
+//		- Reinserts all existing entries
+//		- Reduces future collisions
+//
+// Performance Metrics:
+//		iFill         - Number of entries stored
+//		iNbCollisions - Total collision count
+//		iNbNoInsert   - Failed insertion count
+//		- Used for profiling and optimization
+//
+// Memory Layout:
+//		pTab[iSize] - Array of CLocalisation pointers
+//		- NULL indicates empty slot
+//		- Non-NULL points to localisation entry
+//		- Fixed overhead per slot
+//
+// Usage Flow:
+//		1. Create hash table: new CLocalisationHash(size)
+//		2. Add entries: AddElement(section, key, value)
+//		3. Lookup: Get(section, key)
+//		4. Count section keys: GetNbKeyInSection(section)
+//		5. Cleanup: destructor frees all memory
+//
+// Section Queries:
+//		- Can iterate all keys in a section
+//		- GetNbKeyInSection() returns count
+//		- Used by UI for dynamic content
+//		- Example: List all quest entries
+//
+// Technical Notes:
+//		- Table size must be power of 2
+//		- Case-sensitive key matching
+//		- String comparison via _tcsicmp
+//		- Unicode string support (_TCHAR*)
+//		- No deletion support (append-only)
+//
+// Limitations:
+//		- No key deletion
+//		- Linear probing can cluster
+//		- Rehashing is expensive
+//		- Memory overhead for empty slots
+//
+// Optimization:
+//		- Power-of-2 sizes for fast modulo
+//		- Bit mask instead of % operator
+//		- Pre-allocated table array
+//		- Lazy rehashing
+//
+// Code: Didier Pï¿½dreno
+//
+// TODO: Remove strIcmp dependencies
+//
+// Copyright (c) 1999-2010 ARKANE Studios SA. All rights reserved
+//////////////////////////////////////////////////////////////////////////////////////
 #include "ARX_LocHash.h"
 
 #define _CRTDBG_MAP_ALLOC

@@ -22,9 +22,79 @@ If you have questions concerning this license or the applicable additional terms
 ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 ===========================================================================
 */
-// test_dll.cpp : Defines the entry point for the DLL application.
+//////////////////////////////////////////////////////////////////////////////////////
+// Arx_Config.CPP - Game Configuration and Settings Management
+//////////////////////////////////////////////////////////////////////////////////////
 //
-
+// Description:
+//		Configuration dialog and settings management for Arx Fatalis
+//		Handles game options, graphics settings, audio, and controls
+//		Provides UI for player preferences and system configuration
+//
+// Purpose:
+//		- Display configuration dialog before game launch
+//		- Manage graphics settings (resolution, detail, effects)
+//		- Handle audio configuration (volume, quality)
+//		- Configure input/control settings
+//		- Save/load user preferences
+//		- Detect hardware capabilities
+//
+// CMenuConfig Class:
+//		- Configuration menu interface
+//		- Video mode selection
+//		- Graphics quality options
+//		- Audio settings
+//		- Control binding
+//
+// Configuration Options:
+//		Video:
+//			- Screen resolution
+//			- Color depth (16/32-bit)
+//			- Fullscreen/windowed mode
+//			- Detail level
+//			- Texture quality
+//			- Bump mapping on/off
+//
+//		Audio:
+//			- Master volume
+//			- Effects volume
+//			- Music volume
+//			- EAX/3D audio
+//
+//		Gameplay:
+//			- Mouse sensitivity
+//			- Invert mouse
+//			- Difficulty
+//			- Subtitles
+//			- Language selection
+//
+// Settings Storage:
+//		- Saved to registry or config file
+//		- Loaded at game startup
+//		- Applied before rendering init
+//		- Persistent across sessions
+//
+// Hardware Detection:
+//		- Graphics card capabilities
+//		- DirectX version
+//		- Available resolutions
+//		- Audio device detection
+//		- Special handling for ATI 8500
+//
+// Integration:
+//		- Launched from game launcher
+//		- Can be invoked from main menu
+//		- Applies settings to danaeApp
+//		- Interacts with ARX_Menu2
+//
+// Technical Notes:
+//		- Windows dialog resource (danae_resource.h)
+//		- Registry/INI file persistence
+//		- DirectX enumeration for modes
+//		- Special case for bGATI8500 flag
+//
+// Copyright (c) 1999-2010 ARKANE STUDIOS SA. All rights reserved
+//////////////////////////////////////////////////////////////////////////////////////
 #include <windows.h>
 #include "arx_config.h"
 #include "danae_resource.h"

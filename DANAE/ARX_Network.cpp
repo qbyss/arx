@@ -42,13 +42,65 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //            @@@ @@@                           @@             @@        STUDIOS    //
 //////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////
-// ARX_Network
+// ARX_Network.CPP - Network System Stub
 //////////////////////////////////////////////////////////////////////////////////////
 //
 // Description:
-//		ARX Network Management
+//		Placeholder for multiplayer networking functionality in Arx Fatalis
+//		This file is largely empty - networking was planned but not implemented
+//		Arx Fatalis shipped as a single-player only game
 //
-// Updates: (date) (person) (update)
+// Purpose:
+//		- Reserved for potential multiplayer features
+//		- Network communication infrastructure (unused)
+//		- Player synchronization across network (not implemented)
+//		- Game state replication (not implemented)
+//
+// Current State:
+//		- No active networking code
+//		- Only includes HERMES networking headers
+//		- No functions or classes defined
+//		- Stub/placeholder implementation
+//
+// Historical Context:
+//		- Arx Fatalis was originally envisioned with multiplayer
+//		- Development focused on single-player experience
+//		- Multiplayer features were cut from final release
+//		- This file remains as vestige of that plan
+//
+// HERMESNet Integration:
+//		- HERMESNet.h provides low-level network API
+//		- Supports TCP/IP communication
+//		- Session management
+//		- Player discovery
+//		- None of these features utilized in final game
+//
+// Potential Use Cases (Unimplemented):
+//		- Co-op dungeon crawling
+//		- Player vs Player combat
+//		- Shared world exploration
+//		- Chat/messaging system
+//		- Leaderboards/statistics
+//
+// Why Networking Was Cut:
+//		- Single-player story focus
+//		- Development time constraints
+//		- Technical complexity
+//		- First-person immersive sim design better suited to single-player
+//		- Balancing/design challenges for multiplayer
+//
+// Technical Notes:
+//		- File exists but provides no functionality
+//		- Linked against HERMESNet library
+//		- No network sockets created
+//		- No packet handling code
+//		- May have been used in early prototypes
+//
+// Dependencies:
+//		- ARX_Player.h (player data structures)
+//		- ARX_Network.h (network system declarations)
+//		- HERMESMain.h (HERMES framework)
+//		- HERMESNet.h (networking library)
 //
 // Code: Cyril Meynier
 //
