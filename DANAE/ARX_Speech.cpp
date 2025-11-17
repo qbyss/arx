@@ -42,13 +42,163 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //            @@@ @@@                           @@             @@        STUDIOS    //
 //////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////
-// ARX_Speech
+// ARX_Speech.CPP - NPC Dialogue and Speech System
 //////////////////////////////////////////////////////////////////////////////////////
 //
 // Description:
-//		ARX Speech & Conversation Management
+//		NPC speech, dialogue bubbles, and conversation system for Arx Fatalis
+//		Manages spoken dialogue, text display, and audio playback synchronization
+//		Handles both in-game NPC chatter and formal conversation sequences
 //
-// Updates: (date) (person) (update)
+// Purpose:
+//		- Display NPC speech as floating text bubbles
+//		- Synchronize speech text with voice audio playback
+//		- Manage multiple simultaneous NPC speeches
+//		- Handle conversation dialogue trees
+//		- Control speech timing and duration
+//		- Support speech moods (normal, angry, happy, etc.)
+//
+// Key Responsibilities:
+//		- Speech queue management for multiple NPCs
+//		- Text bubble rendering above NPC heads
+//		- Audio playback triggering and synchronization
+//		- Speech timeout and auto-advance
+//		- Player skip/accelerate speech functionality
+//		- Localized text lookup and display
+//		- Speech mood animation coordination
+//
+// Main Functions:
+//		ARX_SPEECH_Add()               - Add speech text to queue
+//		ARX_SPEECH_AddSpeech()         - Full speech with audio/mood
+//		ARX_SPEECH_Render()            - Draw speech bubbles
+//		ARX_SPEECH_Update()            - Update speech timers/state
+//		ARX_SPEECH_Check()             - Process speech queue
+//		ARX_SPEECH_Release()           - Free speech slot
+//		ARX_SPEECH_ReleaseIOSpeech()   - Clear NPC's speech
+//		ARX_SPEECH_ClearAll()          - Remove all active speech
+//
+// Speech Queue System:
+//		speech[] array              - Queue of active speech bubbles
+//		aspeech[] array             - Advanced speech with audio
+//		- Limited queue size (MAX_SPEECH entries)
+//		- FIFO queue with automatic scroll up
+//		- Per-NPC speech tracking
+//		- Timed expiration
+//
+// Speech Types:
+//		Simple Speech:
+//			- Text-only bubble above NPC
+//			- Manual duration specification
+//			- No audio synchronization
+//			- Used for ambient NPC chatter
+//
+//		Advanced Speech (aspeech):
+//			- Full audio playback integration
+//			- Localized text from speech files
+//			- Mood animations (happy, angry, sad, etc.)
+//			- Auto-duration based on audio length
+//			- Used for quest dialogue
+//
+// Speech Bubbles:
+//		- Rendered as floating text above NPC head
+//		- Auto-positioned based on NPC height
+//		- Scroll up when new speech added
+//		- Fade out on expiration
+//		- Support Unicode/localized text
+//		- Configurable display duration
+//
+// Conversation System:
+//		ARX_CONVERSATION_FirstInit()   - Initialize conversation system
+//		ARX_CONVERSATION_Reset()       - Clear active conversation
+//		ARX_CONVERSATION_CheckAcceleratedSpeech() - Handle skip/fast-forward
+//		- Formal dialogue tree mode
+//		- Player response choices
+//		- Camera focus on speaking NPC
+//		- Pause gameplay during conversations
+//
+// Speech Moods:
+//		ANIM_TALK_NEUTRAL    - Normal speaking
+//		ANIM_TALK_HAPPY      - Cheerful/friendly
+//		ANIM_TALK_ANGRY      - Hostile/aggressive
+//		ANIM_TALK_SORROW     - Sad/mournful
+//		- Controls NPC facial animation
+//		- Affects gesture animations
+//		- Can override default mood
+//
+// Audio Synchronization:
+//		- Speech text linked to audio sample
+//		- Duration calculated from audio length
+//		- Auto-advance when audio completes
+//		- Player can skip to end
+//		- Accelerate playback option
+//		- Handles missing/failed audio gracefully
+//
+// Localization Support:
+//		- Text loaded from localized speech files
+//		- Unicode text rendering
+//		- Language-specific audio files
+//		- Fallback to text-only if audio missing
+//		- RTL text support (if needed)
+//
+// Speech Management:
+//		ARX_SPEECH_Init()              - Initialize speech arrays
+//		ARX_SPEECH_FirstInit()         - One-time initialization
+//		ARX_SPEECH_Reset()             - Clear all speech
+//		ARX_SPEECH_GetFree()           - Find available speech slot
+//		ARX_SPEECH_GetIOSpeech()       - Find NPC's active speech
+//		ARX_SPEECH_MoveUp()            - Scroll queue up
+//		ARX_SPEECH_ClearIOSpeech()     - Clear specific NPC speech
+//
+// Speech Display:
+//		- Text bubbles positioned above NPC head
+//		- Distance-based visibility culling
+//		- Opacity based on distance
+//		- Multiple simultaneous speeches
+//		- Queue scroll animation
+//		- Background bubble rendering
+//
+// Player Interaction:
+//		- Click to skip current speech
+//		- Hold key to accelerate speech
+//		- Auto-advance through dialogue
+//		- Conversation choices (separate system)
+//		REQUEST_SPEECH_SKIP - Player wants to skip
+//
+// Performance Optimizations:
+//		- Limited active speech queue
+//		- Distance culling for off-screen speech
+//		- Lazy audio loading
+//		- Speech pooling/reuse
+//		- Early-out for invisible NPCs
+//
+// Special Features:
+//		HIDESPEECH flag             - Suppress speech rendering
+//		ARX_CONVERSATION flag       - In formal conversation
+//		EXTERNALVIEW flag          - Third-person camera mode
+//		- Ambient speech vs. quest dialogue
+//		- Speech interruption handling
+//		- Priority system for important speech
+//
+// Data Structures:
+//		STRUCT_SPEECH - Speech bubble entry
+//			- lpszUText     - Unicode text string
+//			- timecreation  - Creation timestamp
+//			- duration      - Display duration
+//			- io            - Source NPC
+//
+//		ARX_SPEECH - Advanced speech entry
+//			- data          - Audio file reference
+//			- duration      - Audio duration
+//			- mood          - Animation mood
+//			- flags         - Behavior flags
+//			- sample        - Audio sample handle
+//
+// Dependencies:
+//		- ARX_Text.h (text rendering system)
+//		- ARX_Sound.h (audio playback)
+//		- ARX_Script.h (dialogue scripting)
+//		- ARX_Loc.h (localization)
+//		- ARX_Interface.h (UI integration)
 //
 // Code: Cyril Meynier
 //
@@ -705,7 +855,7 @@ void ARX_SPEECH_Update(LPDIRECT3DDEVICE7 pd3dDevice)
 						                    -3,
 						                    0,
 						                    -10.f + (float)DANAESIZX,
-						                    0,		//taille recalculée
+						                    0,		//taille recalculï¿½e
 						                    speech->text,
 						                    RGB(255, 255, 255),
 						                    hRgn);

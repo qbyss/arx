@@ -42,13 +42,167 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //            @@@ @@@                           @@             @@        STUDIOS    //
 //////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////
-// ARX_NPC
+// ARX_Minimap.CPP - In-Game Map and Navigation System
 //////////////////////////////////////////////////////////////////////////////////////
 //
 // Description:
-//		ARX Minimap Management
+//		Minimap and automap system for Arx Fatalis
+//		Displays top-down 2D map of game levels with fog of war
+//		Shows player position, markers, and revealed areas
 //
-// Updates: (date) (person) (update)
+// Purpose:
+//		- Display navigational minimap in UI
+//		- Track player exploration (fog of war)
+//		- Show custom map markers/waypoints
+//		- Render player position and direction
+//		- Handle multiple floor levels
+//		- Provide level overview
+//
+// Key Responsibilities:
+//		- Load and cache level map textures
+//		- Manage fog of war revelation
+//		- Render minimap with UI overlay
+//		- Track and display custom markers
+//		- Calculate minimap coordinates
+//		- Handle multi-level maps
+//		- Show/hide revealed areas
+//
+// Main Functions:
+//		ARX_MINIMAP_Show()           - Render minimap to screen
+//		ARX_MINIMAP_GetData()        - Load map texture for level
+//		ARX_MINIMAP_Reveal()         - Reveal entire map (cheat/debug)
+//		ARX_MINIMAP_FirstInit()      - Initialize minimap system
+//		ARX_MINIMAP_Reset()          - Clear minimap data
+//		ARX_MINIMAP_PurgeTC()        - Unload map textures
+//		ARX_MINIMAP_ValidatePlayerPos() - Update player position
+//		ARX_MINIMAP_Load_Offsets()   - Load map coordinate offsets
+//
+// Map Markers:
+//		ARX_MAPMARKER_Init()         - Initialize marker system
+//		ARX_MAPMARKER_Add()          - Add custom marker
+//		ARX_MAPMARKER_Remove()       - Remove marker by name
+//		ARX_MAPMARKER_Get()          - Find marker by name
+//		- Custom named waypoints
+//		- Quest objective markers
+//		- Player notes on map
+//		- Persistent across saves
+//
+// Data Structures:
+//		MINI_MAP_DATA - Per-level minimap data
+//			tc        - Map texture container
+//			width     - Map texture width
+//			height    - Map texture height
+//			revealed  - Fog of war bitmap
+//
+//		MAPMARKER_DATA - Custom map marker
+//			name      - Marker identifier
+//			x, y      - World coordinates
+//			lvl       - Level number
+//
+// Map Loading:
+//		- Maps stored as "Graph/Levels/Level<N>/map.bmp"
+//		- Loaded on-demand per level
+//		- Cached until level unload
+//		- 4 pixels per game meter scale
+//		- Calculates bounds from level geometry
+//
+// Fog of War:
+//		- Initially all hidden
+//		- Revealed as player explores
+//		- Saved/loaded with game
+//		- Can be fully revealed via cheat
+//		- Granular revelation tracking
+//
+// Minimap Rendering:
+//		1. Clear background
+//		2. Render base map texture
+//		3. Apply fog of war mask
+//		4. Draw player arrow/icon
+//		5. Draw custom markers
+//		6. Show level name
+//		7. Render border/frame
+//
+// Coordinate Mapping:
+//		- World coords -> Map pixel coords
+//		- Handles map offsets per level
+//		- Accounts for map rotation
+//		- Scales based on zoom level
+//		- Centers on player position
+//
+// Multi-Level Support:
+//		- Separate map per level (MAX_MINIMAPS)
+//		- Switch maps with level changes
+//		- Independent fog of war per level
+//		- Per-level marker storage
+//		- Level name display
+//
+// UI Integration:
+//		- Toggle minimap visibility (TAB key)
+//		- Zoom controls
+//		- Pan/scroll functionality
+//		- Click to add markers
+//		- Marker text editing
+//		- Level selector for multi-floor
+//
+// Map Offsets:
+//		mini_offset_x[] - X coordinate offset per level
+//		mini_offset_y[] - Y coordinate offset per level
+//		- Loaded from "ARX_minioffset.txt"
+//		- Centers map on level geometry
+//		- Corrects for level positioning
+//
+// Player Position:
+//		- Shown as arrow/triangle on map
+//		- Points in facing direction
+//		- Updates real-time
+//		- Validated against map bounds
+//		- Smoothed to prevent jitter
+//
+// Rendering Modes:
+//		flag parameters:
+//			1 - Show full map (no fog of war)
+//			2 - Show markers only
+//			4 - Hide player icon
+//
+//		fl2 parameters:
+//			1 - Zoomed in view
+//			2 - Book/inventory map mode
+//			4 - Fullscreen overlay
+//
+// Performance Optimizations:
+//		- Lazy texture loading
+//		- Texture caching
+//		- Culling off-screen markers
+//		- Fog of war bitmap compression
+//		- Dirty rectangle updates
+//
+// Marker System:
+//		- Up to MAX_MAPMARKERS custom markers
+//		- Named for easy reference
+//		- Persistent across sessions
+//		- Scriptable via game scripts
+//		- Color-coded by type
+//
+// Special Features:
+//		- Detection ring (shows detection radius)
+//		- Animated player icon
+//		- Smooth scrolling/panning
+//		- Dynamic zoom levels
+//		- Screenshot export
+//
+// Technical Notes:
+//		- Map textures use special border handling
+//		- Coordinates relative to level origin
+//		- DECALX/DECALY adjust map position on screen
+//		- mapmaxy[] stores max Y coord per level
+//		- Validates player pos to prevent off-map
+//
+// Dependencies:
+//		- ARX_Levels.h (level management)
+//		- ARX_Text.h (marker text rendering)
+//		- EERIEDraw.h (2D rendering)
+//		- EERIELight.h (light-based revelation)
+//		- HermesMain.h (file I/O for offsets)
 //
 // Code: Cyril Meynier
 //

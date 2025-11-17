@@ -42,13 +42,121 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //            @@@ @@@                           @@             @@        STUDIOS    //
 //////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////
-// ARX_Text
+// ARX_Text.CPP - Text Rendering and Font Management System
 //////////////////////////////////////////////////////////////////////////////////////
 //
 // Description:
-//		ARX Text Management
+//		Comprehensive text rendering system for Arx Fatalis using Windows GDI
+//		Handles Unicode text rendering, font loading, text formatting, and localization
+//		Manages all UI fonts for menus, in-game text, books, and credits
 //
-// Updates: (date) (person) (update)
+// Purpose:
+//		- Render Unicode text to DirectX surfaces via GDI
+//		- Load and manage TrueType fonts dynamically
+//		- Format text with word wrapping in rectangular regions
+//		- Support multiple languages including Chinese, Eastern European
+//		- Provide scrolling text effects for in-game messages
+//		- Manage separate font sets for different UI contexts
+//
+// Key Responsibilities:
+//		- Unicode text rendering using TextOutW via unicows.dll
+//		- TrueType font loading/unloading (arx.ttf, arx_default.ttf)
+//		- Text formatting with automatic word wrapping
+//		- Font size scaling based on screen resolution (Yratio)
+//		- Scrolling text manager for timed messages
+//		- Book text rendering with special formatting
+//		- Multi-language character set support
+//
+// Font Types Managed:
+//		hFontMainMenu   - Large title screen font (48-58pt)
+//		hFontMenu       - Standard menu font (32pt)
+//		hFontControls   - Controls menu font (16-22pt)
+//		hFontCredits    - Credits screen font (32-36pt)
+//		hFontInGame     - General in-game text (16-18pt)
+//		hFontInGameNote - Note/journal font (16-18pt)
+//		InBookFont      - Book page text (16-18pt)
+//		hFontRedist     - Redistribution notice font (16-18pt)
+//
+// Text Manager Classes:
+//		CARXTextManager - Manages collection of timed/scrolling text
+//			- AddText()     - Queue new text for display
+//			- Update()      - Advance scroll/timeout timers
+//			- Render()      - Draw all active text to screen
+//			- Clear()       - Remove all active text
+//
+//		ARX_TEXT - Individual text entry structure
+//			- Unicode text string
+//			- Position rectangle
+//			- Color (foreground/background)
+//			- Scroll parameters (speed, timeout)
+//			- Clipping region for scrolling effects
+//
+// Rendering Functions:
+//		ARX_UNICODE_DrawTextInRect()        - Draw text in bounded area
+//		ARX_UNICODE_FormattingInRect()      - Format text with wrapping
+//		ARX_UNICODE_ForceFormattingInRect() - Calculate text height
+//		UNICODE_ARXDrawTextCenter()         - Centered text rendering
+//		ARX_TEXT_Draw()                     - Simple text draw
+//		ARX_TEXT_DrawRect()                 - Rectangle-bounded text
+//		DrawBookTextInRect()                - Book-specific formatting
+//
+// Font Management:
+//		ARX_Text_Init()  - Load fonts, initialize Unicode library
+//		ARX_Text_Close() - Unload fonts, cleanup resources
+//		_CreateFont()    - Wrapper for CreateFontW with Unicode support
+//		GetFontName()    - Parse TrueType font file for font name
+//		Traffic()        - Font size adjustment for resolution scaling
+//
+// Unicode Support:
+//		- Uses unicows.dll (Microsoft Unicode Layer) for Win9x compatibility
+//		- Dynamically loads Unicode functions via GetProcAddress
+//		- Supports wide character strings (_TCHAR, wchar_t)
+//		- Handles Chinese, Eastern European character sets
+//		- Uses AddFontResourceW/RemoveFontResourceW for font registration
+//
+// Text Wrapping:
+//		- Calculates text extent with GetTextExtentPoint32W
+//		- Breaks lines at word boundaries (spaces)
+//		- Chinese version breaks by character instead of word
+//		- Respects newline characters (\n) and asterisks (*)
+//		- Handles text clipping to rectangular regions
+//
+// Scrolling Text System:
+//		- Timed text display with automatic removal
+//		- Smooth vertical scrolling at configurable speed
+//		- Clipping regions for scroll windows
+//		- Support for multi-line scrolling with line limits
+//		- Delta-based animation tied to frame time
+//
+// Initialization Flow:
+//		1. Load unicows.dll for Unicode support
+//		2. Load arx.ttf/arx_default.ttf from misc directory
+//		3. Register fonts with Windows GDI
+//		4. Create font handles for all UI contexts
+//		5. Apply resolution scaling to font sizes
+//		6. Initialize text manager instances
+//
+// Special Features:
+//		- Font name parsing from TrueType file headers
+//		- Endianness conversion for font metadata
+//		- Resolution-aware font sizing (Traffic function)
+//		- Separate text managers for normal and "flying over" text
+//		- Support for transparent/opaque backgrounds
+//		- Region clipping for complex layouts
+//
+// Technical Notes:
+//		- Renders to DirectDraw surface via GetDC/ReleaseDC
+//		- Uses GDI for text (no DirectX text rendering)
+//		- Font sizes scale with Yratio (vertical resolution ratio)
+//		- Chinese version uses special size mappings
+//		- Font loading errors display message boxes in debug builds
+//
+// Dependencies:
+//		- Windows GDI (TextOutW, CreateFontW, GetTextExtentPoint32W)
+//		- unicows.dll (Unicode support on Windows 9x)
+//		- ARX_Loc.h (localization system)
+//		- EERIEDraw.h (DirectDraw surface access)
+//		- HermesMain.h (PAK file system for config)
 //
 // Copyright (c) 1999-2000 ARKANE Studios SA. All rights reserved
 //////////////////////////////////////////////////////////////////////////////////////

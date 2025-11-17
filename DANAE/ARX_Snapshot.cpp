@@ -42,13 +42,167 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //            @@@ @@@                           @@             @@        STUDIOS    //
 //////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////
-// ARX_Snapshot
+// ARX_Snapshot.CPP - Screenshot and Save Game Thumbnail System
 //////////////////////////////////////////////////////////////////////////////////////
 //
 // Description:
-//		ARX Snapshot management
+//		Screenshot capture and save game thumbnail generation for Arx Fatalis
+//		Captures framebuffer contents and saves to TGA image format
+//		Provides in-memory snapshot caching for save game previews
 //
-// Updates: (date) (person) (update)
+// Purpose:
+//		- Capture game screen to image file
+//		- Generate thumbnails for save game slots
+//		- Cache screenshots in memory for UI
+//		- Export to TGA (Targa) format
+//		- Provide screenshot functionality for players
+//
+// Key Responsibilities:
+//		- Read DirectX framebuffer pixels
+//		- Convert framebuffer to image format
+//		- Compress/resize for thumbnails
+//		- Write TGA file format
+//		- Manage in-memory snapshot cache
+//		- Handle various resolutions
+//
+// Main Functions:
+//		SnapShot::GetSnapShot()        - Capture full-res screenshot
+//		SnapShot::GetSnapShotDim()     - Capture specific dimensions
+//		InitMemorySnaps()              - Initialize memory cache
+//		FlushMemorySnaps()             - Save/clear cached snapshots
+//		InitSnapShot()                 - Setup snapshot system
+//		GetSnapShot()                  - High-level capture wrapper
+//		FreeSnapShot()                 - Cleanup snapshot system
+//
+// SnapShot Class:
+//		- Encapsulates screenshot capture logic
+//		- Handles DirectDraw surface locking
+//		- Manages pixel format conversion
+//		- Supports arbitrary dimensions
+//		- Writes TGA file format
+//
+// Memory Snapshot System:
+//		MEMORYSNAP structure:
+//			name[256]           - Snapshot filename
+//			buffer[640*480*2]   - Raw pixel data (16-bit)
+//
+//		- Caches screenshots in RAM
+//		- Used for save game preview images
+//		- Dynamically sized based on available memory
+//		- Flushes to disk when cache full
+//		- Maximum snapshots determined by RAM
+//
+// TGA File Format:
+//		TargaHeader structure:
+//			- IDLength, ColormapType, ImageType
+//			- XOrigin, YOrigin
+//			- ImageWidth, ImageHeight
+//			- PixelDepth, ImageDescriptor
+//
+//		- Uncompressed 16-bit RGB format
+//		- Standard TGA header (18 bytes)
+//		- Raw pixel data follows header
+//		- Widely compatible format
+//
+// Capture Process:
+//		1. Lock DirectDraw back buffer
+//		2. Read pixel data from surface
+//		3. Convert pixel format (if needed)
+//		4. Resize/downsample (if thumbnail)
+//		5. Copy to destination buffer
+//		6. Unlock surface
+//		7. Write to file or cache
+//
+// Screenshot Types:
+//		Full Screenshot:
+//			- Captures entire framebuffer
+//			- Full game resolution
+//			- Saved to file immediately
+//			- Triggered by F10 key (typical)
+//
+//		Save Game Thumbnail:
+//			- 640x480 or smaller
+//			- Cached in memory first
+//			- Embedded in save file
+//			- Shown in load game menu
+//
+// Resolution Handling:
+//		- Supports arbitrary output dimensions
+//		- Downsamples from framebuffer resolution
+//		- Simple nearest-neighbor scaling
+//		- Maintains aspect ratio options
+//		- Handles various pixel formats
+//
+// Memory Management:
+//		InitMemorySnaps():
+//			- Allocates largest possible cache
+//			- Starts at 1600 snapshots
+//			- Reduces until allocation succeeds
+//			- Tracks MAXSNAPS limit
+//
+//		FlushMemorySnaps():
+//			- Writes all cached snapshots to disk
+//			- Clears cache when full
+//			- Optional clear flag
+//			- Writes as TGA files
+//
+// File Naming:
+//		- Screenshots: "Screenshot_NNNN.tga"
+//		- Save thumbnails: Embedded in save data
+//		- Configurable directory path
+//		- Sequential numbering (CURRENTSNAPNUM)
+//
+// Pixel Format:
+//		- Typically 16-bit RGB565 or RGB555
+//		- Converted to TGA 16-bit format
+//		- Handles endianness correctly
+//		- Supports 24/32-bit framebuffers
+//
+// Performance Considerations:
+//		- Framebuffer lock can stall rendering
+//		- Large captures are expensive
+//		- Memory cache reduces disk I/O
+//		- Downsampling adds CPU cost
+//		- Async flush would improve UX
+//
+// Use Cases:
+//		- Player screenshots (F10 key)
+//		- Save game preview images
+//		- Debug capture for bug reports
+//		- Promotional material
+//		- Video thumbnail generation
+//
+// Integration:
+//		- Called during save game creation
+//		- Screenshot key bound in input system
+//		- Thumbnail shown in load menu
+//		- Cached snapshots flushed on exit
+//
+// Limitations:
+//		- Synchronous capture (blocks frame)
+//		- No compression (large files)
+//		- Limited format support (TGA only)
+//		- Memory cache size limited by RAM
+//		- No alpha channel support
+//
+// Technical Notes:
+//		- Locks back buffer via IDirectDrawSurface::Lock()
+//		- Pixel pointer cast to WORD* for 16-bit
+//		- TGA origin is bottom-left (flipped Y)
+//		- Cache sized dynamically at startup
+//		- Snapshot data in snapshotdata global
+//
+// Error Handling:
+//		- Returns bool for success/failure
+//		- Handles lock failures gracefully
+//		- Validates dimensions
+//		- Checks memory allocation
+//		- Reports file write errors
+//
+// Dependencies:
+//		- danae.h (DirectDraw device access)
+//		- Windows GDI (file I/O)
+//		- DirectX 7 DirectDraw API
 //
 // Code: Cyril Meynier
 //

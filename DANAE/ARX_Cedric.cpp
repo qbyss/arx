@@ -22,6 +22,148 @@ If you have questions concerning this license or the applicable additional terms
 ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 ===========================================================================
 */
+//////////////////////////////////////////////////////////////////////////////////////
+// ARX_Cedric.CPP - Advanced 3D Object Rendering Pipeline
+//////////////////////////////////////////////////////////////////////////////////////
+//
+// Description:
+//		Core 3D rendering system for interactive objects in Arx Fatalis
+//		Handles skeletal animation, lighting, texture mapping, and visibility culling
+//		Named after a developer; contains the main rendering pipeline
+//
+// Purpose:
+//		- Render animated 3D characters, NPCs, and interactive objects
+//		- Apply skeletal animation with bone transformations
+//		- Calculate dynamic lighting on 3D models
+//		- Perform visibility culling and clipping
+//		- Apply texture mapping, bump mapping, and special effects
+//		- Manage bounding boxes for collision and frustum culling
+//
+// Key Responsibilities:
+//		- Transform vertices from object space to screen space
+//		- Concatenate bone hierarchies for skeletal animation
+//		- Apply per-vertex lighting from multiple light sources
+//		- Clip geometry against near/far planes
+//		- Render with transparency and invisibility effects
+//		- Calculate 2D/3D bounding boxes for culling
+//		- Handle special rendering modes (halos, glows, outlines)
+//
+// Main Rendering Functions:
+//		Cedric_AnimateDrawEntity()     - Main entry point for rendering entities
+//		Cedric_RenderObject()          - Primary object rendering function
+//		Cedric_RenderObject2()         - Alternative rendering path
+//		Cedric_TransformVerts()        - Transform vertices to view space
+//		Cedric_ApplyLighting()         - Calculate per-vertex lighting
+//		Cedric_ConcatenateTM()         - Concatenate transformation matrices
+//		Cedric_BlendAnimation()        - Blend between animation frames
+//
+// Animation System:
+//		- Skeletal animation with hierarchical bones
+//		- Vertex blending between animation frames
+//		- Bone rotation/translation interpolation
+//		- Support for animation groups (layers)
+//		- Extra rotations for head tracking, IK, etc.
+//		- Clothing/armor vertex blending
+//
+// Lighting Pipeline:
+//		ApplyDynLight()              - Apply dynamic lights to polygons
+//		ApplyDynLight_VertexBuffer() - Vertex buffer lighting
+//		MakeCLight()                 - Calculate colored lighting
+//		MakeCLight2()                - Alternative lighting calculation
+//		- Supports multiple simultaneous light sources
+//		- Per-vertex diffuse and specular lighting
+//		- Distance attenuation and falloff
+//		- Colored lights (fire, magic, etc.)
+//		- Infrared vision mode support
+//
+// Visibility and Culling:
+//		Cedric_IO_Visible()       - Determine object visibility
+//		ARX_SoftClippZ()          - Software Z-clipping
+//		ARX_DrawPrimitive_ClippZ()- Clip primitives to near plane
+//		- Frustum culling against view volume
+//		- Distance-based LOD (level of detail)
+//		- Occlusion culling
+//		- Back-face culling
+//		- Near/far plane clipping
+//
+// Special Effects:
+//		Cedric_PrepareHalo()         - Prepare halo rendering data
+//		- Invisibility shader effects
+//		- Transparency blending
+//		- Highlight/selection outlines
+//		- Special color overlays (freeze, poison, etc.)
+//		- Bump mapping for detailed surfaces
+//		- Z-mapping for parallax effects
+//
+// Bounding Box System:
+//		Cedric_ResetBoundingBox()    - Initialize bounding box
+//		ResetBBox3D()                - Reset 3D bounds
+//		AddToBBox3D()                - Expand bounds to include point
+//		- 2D screen-space bounding boxes for UI
+//		- 3D world-space bounding boxes for physics
+//		- Used for mouse picking and collision
+//
+// Transformation Pipeline:
+//		1. Apply skeletal animation (bone transforms)
+//		2. Concatenate bone hierarchies
+//		3. Transform vertices to world space
+//		4. Apply camera view transformation
+//		5. Project to screen space
+//		6. Calculate lighting per vertex
+//		7. Apply textures and effects
+//		8. Clip geometry to view frustum
+//		9. Render to framebuffer
+//
+// Rendering Modes:
+//		- Normal opaque rendering
+//		- Alpha-blended transparency
+//		- Additive blending for glows
+//		- Invisibility distortion effect
+//		- Wireframe/debug rendering
+//		- Bump-mapped surfaces
+//		- Z-mapped parallax surfaces
+//
+// Scale and Invisibility:
+//		Cedric_GetScale()            - Get object scale and invisibility
+//		- Objects can be scaled dynamically
+//		- Invisibility spell effects
+//		- Intuition skill reveals invisible objects
+//		- Smooth fade in/out transitions
+//
+// Optimization Features:
+//		- Distance-based vertex LOD
+//		- Frustum culling before transformation
+//		- Batch rendering by texture
+//		- Vertex buffer caching
+//		- Manhattan distance approximations
+//		- Early rejection for invisible objects
+//
+// Technical Notes:
+//		- Uses DirectX 7 Direct3D API
+//		- D3DTLVERTEX for transformed/lit vertices
+//		- Software clipping for near-plane geometry
+//		- Matrix concatenation for bone hierarchies
+//		- Wrapped in #if CEDRIC preprocessor block
+//		- Supports both hardware and software rendering
+//
+// Data Structures:
+//		INTERACTIVE_OBJ  - Game entity with 3D model
+//		EERIE_3DOBJ      - 3D mesh data (vertices, faces)
+//		EERIE_C_DATA     - Animated instance data
+//		EERIE_FACE       - Polygon face definition
+//		EERIE_VERTEX     - 3D vertex position
+//		D3DTLVERTEX      - Transformed & lit vertex
+//
+// Dependencies:
+//		- EERIEAnim.h (skeletal animation system)
+//		- EERIEObject.h (3D object definitions)
+//		- EERIEDraw.h (rendering utilities)
+//		- ARX_NPC.h (NPC entity definitions)
+//		- ARX_Damages.h (visual damage effects)
+//		- ARX_Particles.h (particle system integration)
+//
+// Copyright (c) 1999-2001 ARKANE Studios SA. All rights reserved
+//////////////////////////////////////////////////////////////////////////////////////
 #include "EERIEAnim.h"
 #include "HermesMain.h"
 #include "Arx_Collisions.h"

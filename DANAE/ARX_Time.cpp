@@ -42,13 +42,60 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //            @@@ @@@                           @@             @@        STUDIOS    //
 //////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////
-// ARX_Time.CPP
+// ARX_Time.CPP - Game Time Management System
 //////////////////////////////////////////////////////////////////////////////////////
 //
 // Description:
-//		ARX Time Management
+//		High-precision game time and frame timing system for Arx Fatalis
+//		Uses Windows QueryPerformanceCounter for microsecond-accurate timing
+//		Manages game time, pause state, and frame delta calculations
 //
-// Updates: (date) (person) (update)
+// Purpose:
+//		- Provide high-resolution game time using hardware performance counters
+//		- Track elapsed game time independent of real-world time
+//		- Handle pause/unpause functionality for menus and game states
+//		- Calculate frame delta times for smooth animation and physics
+//		- Support save/load time restoration
+//
+// Key Responsibilities:
+//		- Initialize Windows performance counter (QueryPerformanceFrequency)
+//		- Query current time in milliseconds (_ARX_TIME_GetTime)
+//		- Maintain game time vs paused time separation
+//		- Track total paused duration for accurate game time calculations
+//		- Provide frame timing for game loop synchronization
+//
+// Time Variables:
+//		ARXTime              - Current game time (excludes paused time)
+//		ARXPausedTime        - Timestamp when pause began
+//		ARXTotalPausedTime   - Cumulative paused duration
+//		ARXPausedTimer       - Boolean pause state flag
+//		FrameTime            - Current frame timestamp
+//		LastFrameTime        - Previous frame timestamp
+//
+// API Functions:
+//		ARX_TIME_Init()                    - Initialize timing system
+//		_ARX_TIME_GetTime()                - Get raw performance counter time
+//		ARX_TIME_Pause()                   - Pause game time
+//		ARX_TIME_UnPause()                 - Resume game time
+//		ARX_TIME_Force_Time_Restore(time)  - Set game time (for save/load)
+//
+// Usage Flow:
+//		1. ARX_TIME_Init() - Call once at game startup
+//		2. Each frame: Query time for delta calculations
+//		3. On menu open: ARX_TIME_Pause()
+//		4. On menu close: ARX_TIME_UnPause()
+//		5. On load game: ARX_TIME_Force_Time_Restore(savedTime)
+//
+// Technical Notes:
+//		- Uses LARGE_INTEGER for 64-bit performance counter values
+//		- Frequency queried once at initialization (hardware-dependent)
+//		- Time returned in milliseconds as floating-point
+//		- Pause tracking ensures game time doesn't advance when paused
+//		- Critical for frame-rate independent game logic
+//
+// Dependencies:
+//		- Windows.h (QueryPerformanceCounter/Frequency)
+//		- ARX_Time.h (declarations)
 //
 // Code: Cyril Meynier
 //

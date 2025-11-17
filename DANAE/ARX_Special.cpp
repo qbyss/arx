@@ -42,13 +42,104 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //            @@@ @@@                           @@             @@        STUDIOS    //
 //////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////
-// ARX_Special.CPP
+// ARX_Special.CPP - Physics Attractor System
 //////////////////////////////////////////////////////////////////////////////////////
 //
 // Description:
-//		ARX Special ...
+//		Physics-based attraction and repulsion system for Arx Fatalis
+//		Implements force fields that pull or push objects within a radius
+//		Used for magical effects, environmental hazards, and special gameplay mechanics
 //
-// Updates: (date) (person) (update)
+// Purpose:
+//		- Create attractors that pull objects toward a point
+//		- Create repulsors that push objects away
+//		- Calculate physics forces on affected objects
+//		- Manage multiple simultaneous attractors
+//		- Support distance-based force falloff
+//
+// Key Responsibilities:
+//		- Manage attractor/repulsor objects
+//		- Calculate distance-based forces
+//		- Apply forces to physics-enabled objects
+//		- Handle attractor creation/removal
+//		- Prevent self-attraction
+//
+// Attractor System:
+//		ARX_SPECIAL_ATTRACTORS_Add()       - Create new attractor
+//		ARX_SPECIAL_ATTRACTORS_Remove()    - Remove existing attractor
+//		ARX_SPECIAL_ATTRACTORS_Reset()     - Clear all attractors
+//		ARX_SPECIAL_ATTRACTORS_Exist()     - Check if attractor exists
+//		ARX_SPECIAL_ATTRACTORS_ComputeForIO() - Calculate force on object
+//
+// Data Structure:
+//		ARX_SPECIAL_ATTRACTOR:
+//			ionum  - Interactive object number (-1 = unused)
+//			power  - Attraction strength (positive=pull, negative=push)
+//			radius - Maximum effect distance
+//
+// Force Calculation:
+//		1. Check distance between object and attractor
+//		2. Skip if outside radius or too close (touching)
+//		3. Calculate ratio_dist = 1.0 - (distance / max_radius)
+//		4. Normalize direction vector from object to attractor
+//		5. Apply force = direction * power * ratio_dist * 0.01
+//
+// Use Cases:
+//		- Magic spells (telekinesis, vortex, black hole)
+//		- Environmental hazards (whirlpools, tornadoes)
+//		- Puzzle mechanics (magnetic objects)
+//		- Boss attacks (vacuum/push effects)
+//		- Anti-gravity zones
+//
+// Force Types:
+//		Attraction (power > 0):
+//			- Pulls objects toward attractor
+//			- Useful for vacuum effects
+//			- Gather loose items
+//
+//		Repulsion (power < 0):
+//			- Pushes objects away from attractor
+//			- Useful for explosions
+//			- Protective barriers
+//			- Shockwave effects
+//
+// Limitations:
+//		- Maximum 16 simultaneous attractors (MAX_ATTRACTORS)
+//		- Single force per object per frame
+//		- No attractor chaining/cascading
+//		- Objects must have physics enabled
+//		- Objects must be in treatment zone
+//		- No self-attraction (object ignored if too close)
+//
+// Integration:
+//		- Called from physics update loop
+//		- Force added to object's velocity
+//		- Works with collision system
+//		- Respects object physics flags (IO_NO_COLLISIONS)
+//		- Only affects objects in scene (SHOW_FLAG_IN_SCENE)
+//
+// Performance:
+//		- O(MAX_ATTRACTORS) per object check
+//		- Distance checks optimized
+//		- Early rejection for invalid attractors
+//		- No force applied if outside radius
+//
+// Script Integration:
+//		- Attractors typically created via script commands
+//		- Power can be adjusted dynamically
+//		- Radius can be modified at runtime
+//		- Objects can become attractors temporarily
+//
+// Technical Notes:
+//		- Power scaled by 0.01 for reasonable values
+//		- Distance falloff is linear (1.0 to 0.0)
+//		- Force direction normalized before scaling
+//		- Minimum separation prevents singularities
+//		- Only one force vector returned (last active attractor wins)
+//
+// Dependencies:
+//		- ARX_Interactive.h (interactive object system)
+//		- EERIEMath.h (vector math, distance calculations)
 //
 // Code: Cyril Meynier
 //

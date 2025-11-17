@@ -42,25 +42,164 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //            @@@ @@@                           @@             @@        STUDIOS    //
 //////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////
-// ARX_ChangeLevel
+// ARX_ChangeLevel.CPP - Level Transition and Persistence System
 //////////////////////////////////////////////////////////////////////////////////////
 //
 // Description:
-//		ARX Change Level
+//		Level loading/unloading and state persistence for Arx Fatalis
+//		Handles seamless transitions between game levels
+//		Manages save/load of interactive objects, player state, and world state
 //
-// Updates: (date) (person) (update)
+// Purpose:
+//		- Load and unload game levels dynamically
+//		- Save level state when player leaves an area
+//		- Restore level state when player returns
+//		- Persist interactive object states across transitions
+//		- Manage player position and inventory during transitions
+//		- Handle game save/load to disk
+//
+// Key Responsibilities:
+//		- Level transition coordination
+//		- Interactive object serialization/deserialization
+//		- Player state persistence (position, inventory, stats)
+//		- NPC state saving (position, AI state, variables)
+//		- Item state preservation (dropped items, containers)
+//		- Script variable persistence across levels
+//		- Zone/area state management
+//		- Save file management and organization
+//
+// Main Functions:
+//		ARX_CHANGELEVEL_Change()        - Initiate level transition
+//		ARX_CHANGELEVEL_PushLevel()     - Save current level state
+//		ARX_CHANGELEVEL_PopLevel()      - Restore previous level state
+//		ARX_CHANGELEVEL_MakePath()      - Create save directory structure
+//		ARX_CHANGELEVEL_CreateNewInstance() - New game initialization
+//		ARX_Changelevel_CurGame_Open()  - Open current game save
+//		ARX_Changelevel_CurGame_Seek()  - Find data in save file
+//		ARX_Changelevel_CurGame_Close() - Close save file
+//
+// Save/Load System:
+//		ARX_GAMESAVE_MakePath()         - Setup save game directory
+//		ARX_GAMESAVE_CreateNewInstance()- Initialize new save slot
+//		GetIOAnimIdx2()                 - Get animation index for saving
+//		- Saves to user profile directory
+//		- Organized by game instance (slot) number
+//		- Per-level save files
+//		- Binary save format
+//
+// Data Persisted:
+//		Player State:
+//			- Position and orientation
+//			- Health, mana, stats
+//			- Inventory contents
+//			- Equipment (armor, weapons)
+//			- Skill levels
+//			- Spells learned
+//
+//		Interactive Objects:
+//			- Position and rotation
+//			- Animation state
+//			- Script variables
+//			- Inventory contents (for containers)
+//			- Damage state
+//			- Custom flags
+//
+//		World State:
+//			- NPC positions and AI state
+//			- Item locations
+//			- Door/container open/closed state
+//			- Quest flags
+//			- Timer states
+//			- Spawn states
+//
+//		Level Modifications:
+//			- Destructible objects broken
+//			- Moved objects
+//			- Created/destroyed objects
+//			- Light states
+//
+// Level Transition Flow:
+//		1. Player triggers zone transition
+//		2. Save current level state to disk
+//		3. Unload current level geometry/objects
+//		4. Load new level geometry
+//		5. Restore saved state if level visited before
+//		6. Initialize new objects if first visit
+//		7. Position player at target marker
+//		8. Resume gameplay
+//
+// Save File Organization:
+//		GameSavePath/
+//			<InstanceN>/          - Save slot directory
+//				game.sav          - Global game state
+//				level0/           - Level-specific data
+//					level.sav     - Level state
+//					pld.sav       - Player data for this level
+//					globals.sav   - Global variables
+//					objects/      - Individual IO saves
+//
+// Object Identification:
+//		TEMP_IO structure - Temporary object identifier
+//		- Uses unique string identifier per object
+//		- Matches objects between saves
+//		- Handles spawned/dynamic objects
+//		- Prevents duplicate object creation
+//
+// Special Cases:
+//		- Player inventory items persist across all levels
+//		- Quest items don't respawn
+//		- NPCs remember player interactions
+//		- Containers remember looted state
+//		- Script timers saved and restored
+//		- Active spells/effects preserved
+//
+// Transition Types:
+//		- Normal zone transition (teleporter, doorway)
+//		- Death respawn
+//		- Quick travel
+//		- Load saved game
+//		- New game start
+//
+// State Restoration:
+//		- Full state restore for recently visited levels
+//		- Partial reset for long-abandoned areas
+//		- Quest-critical objects always preserved
+//		- Optional respawn of defeated enemies
+//
+// Performance Optimizations:
+//		- Incremental loading with progress bar
+//		- Lazy object initialization
+//		- Compressed save files
+//		- Delta encoding for unchanged data
+//		- Object pooling to reduce allocations
+//
+// Known Issues (from TODO):
+//		- GlobalMods need per-level saving
+//		- Player inventory restoration needs work
+//		- Inventory items shouldn't be in level index
+//		- IO Tweaks may need review
+//		- Spawned object identifiers may conflict
+//
+// Global Variables:
+//		NEW_LEVEL               - Target level to load (-1 = none)
+//		CURRENT_GAME_INSTANCE   - Current save slot number
+//		CurGamePath             - Path to current save directory
+//		FORCE_TIME_RESTORE      - Override game time on load
+//		FORBID_SAVE             - Disable saving (cutscenes, etc.)
+//		CONVERT_CREATED         - Track object conversion
+//		DONT_WANT_PLAYER_INZONE - Prevent zone triggers
+//
+// Dependencies:
+//		- ARX_Interactive.h (interactive object system)
+//		- ARX_NPC.h (NPC management)
+//		- ARX_Equipment.h (inventory system)
+//		- ARX_Spells.h (magic system state)
+//		- EERIEPathfinder.h (navigation data)
+//		- HERMESMain.h (file I/O)
 //
 // Code: Cyril Meynier
 //
 // Copyright (c) 1999-2001 ARKANE Studios SA. All rights reserved
-//////////////////////////////////////////////////////////////////////////////////////
-// TODO:
-//	-Need to save GlobalMods for each level
-//	-Need to restore Player inventory...
-//	-Player inventory Items Must be pushed but Mustn't be in ANY Level Index...
-//  -IO Tweaks ?
-//	-Check Spawned Objects Ident... Might be dangerous
-//
 //////////////////////////////////////////////////////////////////////////////////////
 
 //-----------------------------------------------------------------------------
@@ -234,7 +373,7 @@ void ARX_GAMESAVE_CreateNewInstance()
 		}
 		else
 		{
-			//le directory peut exister mais peut être vide après un crash
+			//le directory peut exister mais peut ï¿½tre vide aprï¿½s un crash
 			strcat(testpath, "\\GSAVE.SAV");
 			FILE * f = fopen(testpath, "rb");
 
@@ -783,7 +922,7 @@ retry:
 		{
 			case TYPE_G_TEXT:
 
-				if ((svar[i].name[0] == '$') || (svar[i].name[0] == '£'))
+				if ((svar[i].name[0] == '$') || (svar[i].name[0] == 'ï¿½'))
 				{
 					strcpy(avs.name, svar[i].name);
 
@@ -808,7 +947,7 @@ retry:
 				break;
 			case TYPE_G_LONG:
 
-				if ((svar[i].name[0] == '#') || (svar[i].name[0] == '§'))
+				if ((svar[i].name[0] == '#') || (svar[i].name[0] == 'ï¿½'))
 				{
 					strcpy(avs.name, svar[i].name);
 					avs.fval = (float)svar[i].ival;
@@ -1503,7 +1642,7 @@ long ARX_CHANGELEVEL_Push_IO(INTERACTIVE_OBJ * io)
 		{
 			case TYPE_L_TEXT:
 
-				if ((io->script.lvar[i].name[0] == '$') || (io->script.lvar[i].name[0] == '£'))
+				if ((io->script.lvar[i].name[0] == '$') || (io->script.lvar[i].name[0] == 'ï¿½'))
 				{
 					strcpy(avs->name, io->script.lvar[i].name);
 
@@ -1536,7 +1675,7 @@ long ARX_CHANGELEVEL_Push_IO(INTERACTIVE_OBJ * io)
 				break;
 			case TYPE_L_LONG:
 
-				if ((io->script.lvar[i].name[0] == '#') || (io->script.lvar[i].name[0] == '§'))
+				if ((io->script.lvar[i].name[0] == '#') || (io->script.lvar[i].name[0] == 'ï¿½'))
 				{
 					strcpy(avs->name, io->script.lvar[i].name);
 					avs->fval = (float)io->script.lvar[i].ival;
@@ -1583,7 +1722,7 @@ long ARX_CHANGELEVEL_Push_IO(INTERACTIVE_OBJ * io)
 		{
 			case TYPE_L_TEXT:
 
-				if ((io->script.lvar[i].name[0] == '$') || (io->script.lvar[i].name[0] == '£'))
+				if ((io->script.lvar[i].name[0] == '$') || (io->script.lvar[i].name[0] == 'ï¿½'))
 				{
 					strcpy(avs->name, io->over_script.lvar[i].name);
 
@@ -1615,7 +1754,7 @@ long ARX_CHANGELEVEL_Push_IO(INTERACTIVE_OBJ * io)
 				break;
 			case TYPE_L_LONG:
 
-				if ((io->script.lvar[i].name[0] == '#') || (io->script.lvar[i].name[0] == '§'))
+				if ((io->script.lvar[i].name[0] == '#') || (io->script.lvar[i].name[0] == 'ï¿½'))
 				{
 					strcpy(avs->name, io->over_script.lvar[i].name);
 					avs->fval	= (float)io->over_script.lvar[i].ival;
@@ -2788,7 +2927,7 @@ long ARX_CHANGELEVEL_Pop_IO(char * ident)
 						pos += io->script.lvar[i].ival;
 						io->script.lvar[i].ival = strlen(io->script.lvar[i].text) + 1;
 
-						if (io->script.lvar[i].text[0] == 'Ì')
+						if (io->script.lvar[i].text[0] == 'ï¿½')
 							io->script.lvar[i].text[0] = 0;
 					}
 					else
@@ -2814,13 +2953,13 @@ long ARX_CHANGELEVEL_Pop_IO(char * ident)
 					break;
 				default:
 
-					if ((avs->name[0] == '$') || (avs->name[0] == '£'))
+					if ((avs->name[0] == '$') || (avs->name[0] == 'ï¿½'))
 					{
 						avs->type = TYPE_L_TEXT;
 						goto retry;
 					}
 
-					if ((avs->name[0] == '#') || (avs->name[0] == '§'))
+					if ((avs->name[0] == '#') || (avs->name[0] == 'ï¿½'))
 					{
 						avs->type = TYPE_L_LONG;
 						goto retry;
@@ -2923,7 +3062,7 @@ long ARX_CHANGELEVEL_Pop_IO(char * ident)
 					break;
 				default:
 
-					if ((avs->name[0] == '$') || (avs->name[0] == '£'))
+					if ((avs->name[0] == '$') || (avs->name[0] == 'ï¿½'))
 					{
 						avs->type = TYPE_L_TEXT;
 						goto retry2;
@@ -3547,7 +3686,7 @@ long ARX_CHANGELEVEL_Pop_Globals()
 
 					memcpy(svar[i].text, dat + pos + sizeof(ARX_CHANGELEVEL_VARIABLE_SAVE), svar[i].ival);
 
-					if (svar[i].text[0] == 'Ì')
+					if (svar[i].text[0] == 'ï¿½')
 						svar[i].text[0] = 0;
 				}
 				else
@@ -3995,8 +4134,8 @@ long ARX_CHANGELEVEL_PopLevel(long instance, long reloadflag)
 
 
 //-----------------------------------------------------------------------------
-// copie un rep (récursif sous reps) dans un autre en créant les reps
-// écrase les fichiers pour les mettre à jour
+// copie un rep (rï¿½cursif sous reps) dans un autre en crï¿½ant les reps
+// ï¿½crase les fichiers pour les mettre ï¿½ jour
 void CopyDirectory(char * _lpszSrc, char * _lpszDest)
 {
 	CreateDirectory(_lpszDest, NULL);
