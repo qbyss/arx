@@ -42,17 +42,374 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //            @@@ @@@                           @@             @@        STUDIOS    //
 //////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////
-// DanaeSaveLoad.CPP
+// DanaeSaveLoad.CPP - Level Save/Load System
 //////////////////////////////////////////////////////////////////////////////////////
 //
 // Description:
-//		DANAE Save & Load Management
+//		Core save/load system for Arx Fatalis level files and game state
+//		Handles serialization of entire game world including objects, lights, paths
+//		Manages .DLF (DANAE Level File) and .LLF (Level Lighting File) formats
 //
-// Updates: (date) (person) (update)
+// Purpose:
+//		- Save complete level state to disk
+//		- Load level files and reconstruct game world
+//		- Serialize/deserialize all game entities
+//		- Manage level backup creation
+//		- Handle level cleanup and resource deallocation
+//		- Provide development tools for level management
+//
+// Key Responsibilities:
+//		- Level file I/O (.DLF/.LLF formats)
+//		- Interactive object persistence
+//		- Scene/background geometry serialization
+//		- Lighting system state save/load
+//		- Pathfinding data persistence
+//		- Fog/weather effect serialization
+//		- Script data preservation
+//		- Progress tracking during load
+//		- Automatic backup creation
+//		- Memory management for saved data
+//
+// File Formats:
+//		.DLF (DANAE Level File):
+//			- Main level container format
+//			- Binary format with versioning
+//			- Contains all level entities
+//			- Header: DANAE_LS_HEADER
+//			- Sections: Scene, Interactive, Lighting, Paths, Fogs
+//
+//		.LLF (Level Lighting File):
+//			- Precomputed lighting data
+//			- Per-vertex color data
+//			- Separated for faster loading
+//			- Optional (can rebuild if missing)
+//
+// Core Save Functions:
+//		DanaeSaveLevel(char* fic):
+//			- Main level save function
+//			- Creates timestamped backup of existing .DLF/.LLF
+//			- Builds DANAE_LS_HEADER with metadata
+//			- Saves scene reference (LastLoadedScene)
+//			- Serializes interactive objects (excluding player)
+//			- Writes lighting data (vertex colors)
+//			- Saves pathfinding nodes and links
+//			- Serializes fog data
+//			- Writes background polygon data
+//			- Saves zone data
+//			- Creates backup with timestamp suffix
+//			- Returns file handle for additional writes
+//
+//		WriteIOInfo(INTERACTIVE_OBJ* io, char* dir):
+//			- Writes interactive object to file
+//			- Serializes object properties
+//			- Saves inventory contents
+//			- Writes tweak data
+//			- Stores physics parameters
+//			- Saves AI/behavior data
+//
+//		SaveIOScript(INTERACTIVE_OBJ* io, long fl):
+//			- Saves script code for object
+//			- Writes .AIS (ARX Interactive Script) files
+//			- Preserves script state
+//			- Handles multi-language scripts
+//
+// Core Load Functions:
+//		DanaeLoadLevel(LPDIRECT3DDEVICE7 pd3dDevice, char* fic):
+//			- Main level load function
+//			- Reads .DLF header and validates version
+//			- Loads scene geometry if referenced
+//			- Deserializes interactive objects
+//			- Restores lighting data (.LLF or rebuilds)
+//			- Loads pathfinding system
+//			- Restores fog effects
+//			- Initializes zones
+//			- Shows progress bar during load
+//			- Calls ShowCurLoadInfo() for status updates
+//
+//		_LoadTheObj(char* text, char* path):
+//			- Loads 3D object mesh (.TEO format)
+//			- Used for interactive object models
+//			- Calls TheoToEerie_Fast() converter
+//			- Handles texture path resolution
+//
+//		RestoreLastLoadedLightning():
+//			- Reloads lighting from .LLF file
+//			- Restores per-vertex colors
+//			- Called after level modifications
+//			- Fallback to recompute if missing
+//
+// Cleanup Functions:
+//		DanaeClearLevel(long flag):
+//			- Clears current level data
+//			- Frees interactive objects
+//			- Releases lighting resources
+//			- Cleans up paths and zones
+//			- Stops ambient sounds
+//			- Clears particles/spells
+//			- FLAG options control behavior
+//
+//		DanaeClearAll():
+//			- Complete game state reset
+//			- Calls DanaeClearLevel()
+//			- Resets global variables
+//			- Prepares for new level load
+//
+//		ReleaseAllSpellResources():
+//			- Cleanup active spell effects
+//			- Frees particle systems
+//			- Releases spell visuals
+//			- Called before level change
+//
+// Development Tools:
+//		BIG_PURGE():
+//			- Development-time optimization tool
+//			- Removes entities outside active area
+//			- Calls CanPurge() to check location
+//			- Purges unused IOs, lights, paths, fogs
+//			- Shows confirmation dialog
+//			- Reports counts of purged entities
+//
+//		CanPurge(EERIE_3D* pos):
+//			- Checks if position is in unpopulated area
+//			- Tests if background grid cells are empty
+//			- Returns TRUE if safe to purge
+//			- Used by BIG_PURGE() for filtering
+//
+// Data Structures:
+//		DANAE_LS_HEADER:
+//			- version: File format version (CURRENT_VERSION)
+//			- ident: "DANAE_FILE" signature
+//			- nb_scn: Scene count (0 or 1)
+//			- nb_inter: Interactive object count
+//			- nb_nodes: Pathfinding node count
+//			- nb_nodeslinks: Links per node (MAX_LINKS)
+//			- nb_lights: Light count (MUST BE 0 in modern versions)
+//			- nb_fogs: Fog effect count
+//			- nb_bkgpolys: Background polygon count
+//			- nb_ignoredpolys: Ignored polygon count
+//			- nb_childpolys: Child polygon count
+//			- nb_paths: ARX path count
+//			- nb_zones: Zone count
+//			- lighting: Lighting flag (FALSE)
+//			- pos_edit: Editor camera position
+//			- angle_edit: Editor camera angles
+//			- time: Save timestamp (__time32_t)
+//			- lastuser: User who saved (GetUserName)
+//
+//		DANAE_LS_SCENE:
+//			- name: Scene filename (LastLoadedScene)
+//
+//		DANAE_LS_INTER:
+//			- Interactive object serialized data
+//			- Position, rotation, scale
+//			- Flags, game flags, properties
+//			- Inventory, equipment, stats
+//			- AI behavior, target, group
+//
+//		DANAE_LS_LIGHT:
+//			- Light source data (deprecated)
+//			- Position, color, radius
+//			- Falloff parameters
+//
+//		DANAE_LS_FOG:
+//			- Fog effect parameters
+//			- Position, color, size
+//			- Blend mode, special flags
+//
+//		DANAE_LS_NODE:
+//			- Pathfinding node data
+//			- Position in 3D space
+//			- Links to other nodes (MAX_LINKS)
+//
+//		DANAE_LS_PATH:
+//			- ARX path data
+//			- Name, initial position
+//			- Flags, zone affinity
+//
+//		DANAE_LS_PATHWAYS:
+//			- Individual waypoints in path
+//			- Position, time, flags
+//
+// Backup System:
+//		Timestamped Backups:
+//			- Format: "Backup_DLF_MM_DD_YYYY__HHhMMmn"
+//			- Created before overwriting existing .DLF
+//			- Separate backups for .DLF and .LLF
+//			- Uses HERMES_DATE_TIME for timestamp
+//
+//		rename() operations:
+//			- Old file renamed before save
+//			- Preserves previous version
+//			- No data loss on save failure
+//
+// Progress Tracking:
+//		ShowCurLoadInfo(char* string):
+//			- Displays load status messages
+//			- Updates progress bar
+//			- PROGRESS_BAR_COUNT / PROGRESS_BAR_TOTAL
+//
+//		Loading stages reported:
+//			- "Loading Scene"
+//			- "Loading Interactive Objects"
+//			- "Loading Fogs"
+//			- "Loading Lights"
+//			- "Loading Paths"
+//			- "Loading Zones"
+//
+// Script Integration:
+//		LogDirCreation(char* dir):
+//			- Logs directory creation for scripts
+//			- Tracks dynamically created folders
+//
+//		LogDirDestruction(char* dir):
+//			- Logs directory removal
+//			- Updates script directory tracking
+//
+//		CheckIO_NOT_SAVED():
+//			- Verifies all objects have save data
+//			- Detects missing script files
+//			- Development validation tool
+//
+// Path Utilities:
+//		ReplaceSpecifics(char* text):
+//			- Converts relative paths to absolute
+//			- Prepends Project.workingdir
+//			- Handles "GRAPH" prefix replacement
+//
+// DLF Validation:
+//		ARX_SAVELOAD_DLFCheckInit():
+//			- Initializes DLF validation system
+//			- Prepares for integrity checks
+//
+//		ARX_SAVELOAD_DLFCheckAdd(char* path, long num):
+//			- Adds file to validation list
+//			- Tracks referenced resources
+//
+//		ARX_SAVELOAD_CheckDLFs():
+//			- Validates all DLF files in project
+//			- Checks for broken references
+//			- Reports missing dependencies
+//
+//		GetIdent(char* ident):
+//			- Lookup identifier in table
+//			- Returns index or -1
+//
+//		AddIdent(char* ident, long num):
+//			- Adds identifier to validation table
+//			- Prevents duplicates
+//
+// Memory Management:
+//		Large buffer allocation:
+//			- Calculates required size from entity counts
+//			- Single malloc() for entire save buffer
+//			- Includes padding (+1000000 bytes safety)
+//			- Freed after write completes
+//
+//		dat buffer usage:
+//			- Sequential writes with pos tracking
+//			- memcpy() for structure serialization
+//			- Zero-initialized (memset)
+//
+// Version Handling:
+//		CURRENT_VERSION constant:
+//			- Defines latest file format version
+//			- Used in DANAE_LS_HEADER.version
+//
+//		Special version flags:
+//			- version 1.004f: NODIRCREATION mode
+//			- Backward compatibility support
+//
+// Global Variables:
+//		PROGRESS_BAR_COUNT:
+//			- Current load progress value
+//			- Incremented during load
+//
+//		PROGRESS_BAR_TOTAL:
+//			- Total items to load
+//			- Set from header counts
+//
+//		DONT_ERASE_PLAYER:
+//			- Flag to preserve player data
+//			- Prevents player deletion during cleanup
+//
+//		ADDED_IO_NOT_SAVED:
+//			- Tracks unsaved runtime objects
+//			- Development warning system
+//
+//		NODIRCREATION:
+//			- Disables automatic directory creation
+//			- Legacy compatibility mode
+//
+// Integration Points:
+//		Scene Loading:
+//			- LoadLevelScreen() for background geometry
+//			- Mscenepos offset for scene placement
+//
+//		Interactive Objects:
+//			- AddInteractive() for object creation
+//			- RestoreIOInitPos() for positioning
+//			- RestoreIOIdentity() for properties
+//
+//		Lighting:
+//			- EERIE_LIGHT_GlobalInit() initialization
+//			- Per-vertex color restoration
+//			- EERIE_LIGHT_Apply() for dynamic lighting
+//
+//		Pathfinding:
+//			- ARX_PATHS_Alloc() for path creation
+//			- Node link restoration
+//			- Zone assignment
+//
+//		Fogs:
+//			- ARX_FOGS_Restore() for effect recreation
+//			- Position, color, blend mode setup
+//
+// Error Handling:
+//		goto error pattern:
+//			- Cleanup on allocation failure
+//			- Shows error message dialog
+//			- Frees partially allocated resources
+//
+//		File validation:
+//			- Checks "DANAE_FILE" signature
+//			- Version compatibility verification
+//			- Handles corrupted data gracefully
+//
+// Use Cases:
+//		- Saving level during development
+//		- Loading levels at game start
+//		- Level transitions (ARX_CHANGELEVEL)
+//		- Checkpoint/autosave system
+//		- Development iteration (edit/save/test)
+//		- Level optimization (BIG_PURGE)
+//		- Backup recovery after crashes
+//
+// Technical Notes:
+//		- Binary file format (not human-readable)
+//		- Little-endian byte order (x86)
+//		- Absolute file paths stored
+//		- No compression (raw data)
+//		- Sequential write/read pattern
+//		- Single-threaded operation
+//
+// Limitations:
+//		- No incremental saving
+//		- Full level write every time
+//		- No streaming (all loaded at once)
+//		- Platform-specific paths (Windows backslashes)
+//		- Fixed structure sizes (versioning limitations)
+//
+// Dependencies:
+//		- DanaeSaveLoad.h (data structure definitions)
+//		- HERMESMain.h (PAK file system, date/time)
+//		- EERIEObject.h (3D object loading)
+//		- ARX_*.h (all subsystem headers)
+//		- File I/O (_open, _write, _read, _close)
+//		- Memory allocation (malloc, free)
 //
 // Code: Cyril Meynier
 //
-// Copyright (c) 1999-2000 ARKANE Studios SA. All rights reserved
+// Copyright (c) 1999-2010 ARKANE Studios SA. All rights reserved
 //////////////////////////////////////////////////////////////////////////////////////
 
 #include <DanaeSaveLoad.h>

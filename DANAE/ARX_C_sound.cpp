@@ -3,25 +3,321 @@
 ARX FATALIS GPL Source Code
 Copyright (C) 1999-2010 Arkane Studios SA, a ZeniMax Media company.
 
-This file is part of the Arx Fatalis GPL Source Code ('Arx Fatalis Source Code'). 
+This file is part of the Arx Fatalis GPL Source Code ('Arx Fatalis Source Code').
 
-Arx Fatalis Source Code is free software: you can redistribute it and/or modify it under the terms of the GNU General Public 
+Arx Fatalis Source Code is free software: you can redistribute it and/or modify it under the terms of the GNU General Public
 License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
 
-Arx Fatalis Source Code is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied 
+Arx Fatalis Source Code is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
 warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 
-You should have received a copy of the GNU General Public License along with Arx Fatalis Source Code.  If not, see 
+You should have received a copy of the GNU General Public License along with Arx Fatalis Source Code.  If not, see
 <http://www.gnu.org/licenses/>.
 
-In addition, the Arx Fatalis Source Code is also subject to certain additional terms. You should have received a copy of these 
-additional terms immediately following the terms and conditions of the GNU General Public License which accompanied the Arx 
+In addition, the Arx Fatalis Source Code is also subject to certain additional terms. You should have received a copy of these
+additional terms immediately following the terms and conditions of the GNU General Public License which accompanied the Arx
 Fatalis Source Code. If not, please request a copy in writing from Arkane Studios at the address below.
 
-If you have questions concerning this license or the applicable additional terms, you may contact in writing Arkane Studios, c/o 
+If you have questions concerning this license or the applicable additional terms, you may contact in writing Arkane Studios, c/o
 ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 ===========================================================================
 */
+//////////////////////////////////////////////////////////////////////////////////////
+//   @@        @@@        @@@                @@                           @@@@@     //
+//   @@@       @@@@@@     @@@     @@        @@@@                         @@@  @@@   //
+//   @@@       @@@@@@@    @@@    @@@@       @@@@      @@                @@@@        //
+//   @@@       @@  @@@@   @@@  @@@@@       @@@@@@     @@@               @@@         //
+//  @@@@@      @@  @@@@   @@@ @@@@@        @@@@@@@    @@@            @  @@@         //
+//  @@@@@      @@  @@@@  @@@@@@@@         @@@@ @@@    @@@@@         @@ @@@@@@@      //
+//  @@ @@@     @@  @@@@  @@@@@@@          @@@  @@@    @@@@@@        @@ @@@@         //
+// @@@ @@@    @@@ @@@@   @@@@@            @@@@@@@@@   @@@@@@@      @@@ @@@@         //
+// @@@ @@@@   @@@@@@@    @@@@@@           @@@  @@@@   @@@ @@@      @@@ @@@@         //
+// @@@@@@@@   @@@@@      @@@@@@@@@@      @@@    @@@   @@@  @@@    @@@  @@@@@        //
+// @@@  @@@@  @@@@       @@@  @@@@@@@    @@@    @@@   @@@@  @@@  @@@@  @@@@@        //
+//@@@   @@@@  @@@@@      @@@      @@@@@@ @@     @@@   @@@@   @@@@@@@    @@@@@ @@@@@ //
+//@@@   @@@@@ @@@@@     @@@@        @@@  @@      @@   @@@@   @@@@@@@    @@@@@@@@@   //
+//@@@    @@@@ @@@@@@@   @@@@             @@      @@   @@@@    @@@@@      @@@@@      //
+//@@@    @@@@ @@@@@@@   @@@@             @@      @@   @@@@    @@@@@       @@        //
+//@@@    @@@  @@@ @@@@@                          @@            @@@                  //
+//            @@@ @@@                           @@             @@        STUDIOS    //
+//////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
+// ARX_C_sound.CPP - Cinematic Sound Management System
+//////////////////////////////////////////////////////////////////////////////////////
+//
+// Description:
+//		Sound resource management and playback for cinematic sequences
+//		Handles localized audio paths, sound loading, and synchronized playback
+//		Manages sound resources for cutscenes with multi-language support
+//
+// Purpose:
+//		- Manage sound resources for cinematics
+//		- Handle localized audio file paths
+//		- Synchronize sound playback with keyframes
+//		- Provide language-specific sound variants
+//		- Integrate with main ARX sound system
+//
+// Key Responsibilities:
+//		- Sound resource allocation/deallocation
+//		- Path normalization for localized audio
+//		- Language selection and path mapping
+//		- Sound playback at cinematic keyframes
+//		- Sound handle management
+//		- Resource cleanup
+//
+// Global Data:
+//		C_SOUND TabSound[MAX_SOUND]:
+//			- Array of cinematic sound resources
+//			- Fixed-size pool allocation
+//			- Each entry contains:
+//				* actif: Active flag + language ID (upper byte)
+//				* dir: Source directory path
+//				* name: Sound filename
+//				* sound: Final resolved file path
+//				* load: Load status flag
+//				* idhandle: ARX_SOUND system handle
+//
+//		NbSound:
+//			- Count of currently loaded sounds
+//			- Used for resource tracking
+//
+//		LSoundChoose:
+//			- Language selection (upper byte)
+//			- Values: C_LANGUAGE_ENGLISH << 8, etc.
+//			- Filters sounds by language
+//
+// Core Functions:
+//		InitSound(CINEMATIQUE* c):
+//			- Initializes sound table to empty state
+//			- Sets all handles to ARX_SOUND_INVALID_RESOURCE
+//			- Zeros all C_SOUND structures
+//			- Resets NbSound counter
+//			- Called when starting new cinematic
+//
+//		GetFreeSound(int* num):
+//			- Searches for unused slot in TabSound[]
+//			- Returns pointer to free C_SOUND entry
+//			- Sets num to index in array
+//			- Returns NULL if table full
+//
+//		DeleteFreeSound(int num):
+//			- Removes sound from slot num
+//			- Frees allocated strings (dir, name, sound)
+//			- Marks slot inactive
+//			- Decrements NbSound counter
+//			- Returns FALSE if slot already inactive
+//
+//		DeleteAllSound():
+//			- Iterates through all MAX_SOUND slots
+//			- Calls DeleteFreeSound() on each
+//			- Used when clearing cinematic
+//			- Ensures complete cleanup
+//
+//		ExistSound(char* dir, char* name):
+//			- Checks if sound already loaded
+//			- Searches by directory and filename
+//			- Filters by current language (LSoundChoose)
+//			- Returns index if found, -1 otherwise
+//			- Prevents duplicate loading
+//
+//		AddSoundToList(char* dir, char* name, int id, int pos):
+//			- Main function for loading cinematic sounds
+//			- Checks for existing sound (avoids duplicates)
+//			- Allocates C_SOUND slot (reuses id if >= 0)
+//			- Copies directory and filename
+//			- Builds final path with localization
+//			- Calls PatchReplace() for path normalization
+//			- Stores uppercase path in cs->sound
+//			- Marks as loaded and active
+//			- Returns slot index or -1 on failure
+//
+//		PlaySoundKeyFramer(int id):
+//			- Plays sound at cinematic keyframe
+//			- Calls ARX_SOUND_PlayCinematic()
+//			- Strips working directory prefix (g_pak_workdir_len)
+//			- Stores handle in cs->idhandle
+//			- Returns FALSE if slot inactive
+//
+//		StopSoundKeyFramer():
+//			- Stops all cinematic sounds
+//			- Iterates through TabSound[] array
+//			- Calls ARX_SOUND_Stop() on active sounds
+//			- Resets handles to ARX_SOUND_INVALID_RESOURCE
+//			- Called when cinematic ends or skips
+//
+// Path Processing:
+//		PatchReplace():
+//			- Complex path normalization for localization
+//			- Replaces "uk" with "english\\"
+//			- Replaces "fr" with "francais\\"
+//			- Removes absolute path prefix (ClearAbsDirectory)
+//			- Adds working directory (AddDirectory)
+//			- Removes "sfx\\" from "sfx\\speech\\" paths
+//			- Inserts localization folder in speech paths
+//			- Final format: "speech\\<locale>\\filename.wav"
+//
+//		CutAndAddString(char* pText, char* pDebText):
+//			- Searches for pDebText substring in pText
+//			- Concatenates remaining text to AllTxt
+//			- Case-insensitive search (strnicmp)
+//			- Used for extracting partial paths
+//
+// Language Mapping:
+//		Language codes converted to folders:
+//			"uk" -> "english\\"
+//			"fr" -> "francais\\"
+//
+//		Path transformation example:
+//			Input:  "sfx\\speech\\uk\\dialogue.wav"
+//			Output: "<workdir>\\speech\\english\\dialogue.wav"
+//
+//		LSoundChoose encoding:
+//			Upper byte: Language ID
+//			Lower byte: Unused
+//			Example: C_LANGUAGE_ENGLISH << 8
+//
+// Path Building Logic:
+//		For SFX sounds:
+//			- Start with "\\\\Arkaneserver\\public\\ARX\\"
+//			- Cut and add from "sfx" directory
+//			- Append filename
+//			- Apply PatchReplace() normalization
+//			- Convert to uppercase
+//
+//		For speech sounds:
+//			- Format: "<workdir>\\speech\\<locale>\\<filename>"
+//			- Uses Project.localisationpath
+//			- No uppercase conversion
+//
+// C_SOUND Structure Fields:
+//		actif (short):
+//			- Lower byte: Active flag (0 = inactive, 1 = active)
+//			- Upper byte: Language ID
+//			- Combined: actif = 1 | LSoundChoose
+//
+//		dir (char*):
+//			- Source directory path
+//			- Dynamically allocated
+//			- Freed in DeleteFreeSound()
+//
+//		name (char*):
+//			- Sound filename
+//			- Dynamically allocated
+//			- Freed in DeleteFreeSound()
+//
+//		sound (char*):
+//			- Final resolved file path
+//			- Used for ARX_SOUND_PlayCinematic()
+//			- Uppercase for SFX, mixed case for speech
+//			- Dynamically allocated (strdup)
+//
+//		load (int):
+//			- Load status flag
+//			- Set to 1 when sound added
+//			- Checked to prevent overwriting loaded sounds
+//
+//		idhandle:
+//			- ARX sound system resource handle
+//			- Set by ARX_SOUND_PlayCinematic()
+//			- Used by ARX_SOUND_Stop()
+//			- ARX_SOUND_INVALID_RESOURCE when not playing
+//
+// Memory Management:
+//		Allocations:
+//			- cs->dir: malloc(strlen(dir) + 1)
+//			- cs->name: malloc(strlen(name) + 1)
+//			- cs->sound: strdup(AllTxt) or strdup(szTemp)
+//
+//		Deallocations:
+//			- All freed in DeleteFreeSound()
+//			- Handles NULL pointers safely
+//			- No memory leaks when properly cleaned
+//
+// Integration with ARX_SOUND:
+//		ARX_SOUND_PlayCinematic():
+//			- Plays sound exclusively for cinematics
+//			- Different from gameplay sounds
+//			- Returns sound handle
+//
+//		ARX_SOUND_Stop():
+//			- Stops playing sound by handle
+//			- Safe to call on invalid handles
+//
+//		ARX_SOUND_INVALID_RESOURCE:
+//			- Sentinel value for invalid handles
+//			- Used to mark unloaded/stopped sounds
+//
+// Global Variables (extern):
+//		AllTxt[32767]:
+//			- Large buffer for path construction
+//			- Used by PatchReplace() and path builders
+//			- Shared with other cinematic systems
+//
+//		DirectoryAbs:
+//			- Absolute working directory
+//			- Added by PatchReplace()
+//
+//		g_pak_workdir_len:
+//			- Length of PAK working directory prefix
+//			- Stripped from paths in PlaySoundKeyFramer()
+//
+//		Project.workingdir:
+//			- Game working directory
+//			- Base path for all resources
+//
+//		Project.localisationpath:
+//			- Current language folder name
+//			- Example: "english", "francais"
+//
+// Use Cases:
+//		- Playing localized dialogue in cutscenes
+//		- Sound effects synchronized to keyframes
+//		- Multi-language cinematic support
+//		- Voice acting for story sequences
+//		- Sound cue triggering at specific frames
+//
+// Workflow:
+//		1. InitSound() - clear sound table
+//		2. AddSoundToList() - load sounds for cinematic
+//		3. Cinematic keyframe reached
+//		4. PlaySoundKeyFramer() - play sound
+//		5. Cinematic ends
+//		6. StopSoundKeyFramer() - stop all sounds
+//		7. DeleteAllSound() - cleanup resources
+//
+// Error Handling:
+//		- Returns NULL/FALSE on allocation failure
+//		- Checks for inactive slots
+//		- Prevents duplicate loading
+//		- Validates sound handles
+//		- Safe cleanup on errors
+//
+// Technical Notes:
+//		- Fixed-size sound pool (MAX_SOUND)
+//		- Case-insensitive path matching
+//		- String duplication for safety
+//		- Path normalization for cross-platform
+//		- Upper byte of actif stores language
+//		- Lower byte stores active state
+//
+// Limitations:
+//		- MAX_SOUND simultaneous sounds
+//		- Single language active at a time
+//		- No streaming (all loaded)
+//		- No volume/pan control exposed
+//		- No sound priority system
+//
+// Dependencies:
+//		- arx_c_cinematique.h (CINEMATIQUE class)
+//		- arx_sound.h (ARX_SOUND_* functions)
+//		- String manipulation (strcpy, strdup, etc.)
+//		- Memory allocation (malloc, free)
+//		- Path utilities (ClearAbsDirectory, AddDirectory)
+//
+// Code: Cyril Meynier
+//
+// Copyright (c) 1999-2010 ARKANE Studios SA. All rights reserved
+//////////////////////////////////////////////////////////////////////////////////////
 #include <stdio.h>
 #include "arx_c_cinematique.h"
 #include "resource.h"

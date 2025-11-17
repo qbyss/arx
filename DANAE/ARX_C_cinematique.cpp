@@ -3,25 +3,428 @@
 ARX FATALIS GPL Source Code
 Copyright (C) 1999-2010 Arkane Studios SA, a ZeniMax Media company.
 
-This file is part of the Arx Fatalis GPL Source Code ('Arx Fatalis Source Code'). 
+This file is part of the Arx Fatalis GPL Source Code ('Arx Fatalis Source Code').
 
-Arx Fatalis Source Code is free software: you can redistribute it and/or modify it under the terms of the GNU General Public 
+Arx Fatalis Source Code is free software: you can redistribute it and/or modify it under the terms of the GNU General Public
 License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
 
-Arx Fatalis Source Code is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied 
+Arx Fatalis Source Code is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
 warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 
-You should have received a copy of the GNU General Public License along with Arx Fatalis Source Code.  If not, see 
+You should have received a copy of the GNU General Public License along with Arx Fatalis Source Code.  If not, see
 <http://www.gnu.org/licenses/>.
 
-In addition, the Arx Fatalis Source Code is also subject to certain additional terms. You should have received a copy of these 
-additional terms immediately following the terms and conditions of the GNU General Public License which accompanied the Arx 
+In addition, the Arx Fatalis Source Code is also subject to certain additional terms. You should have received a copy of these
+additional terms immediately following the terms and conditions of the GNU General Public License which accompanied the Arx
 Fatalis Source Code. If not, please request a copy in writing from Arkane Studios at the address below.
 
-If you have questions concerning this license or the applicable additional terms, you may contact in writing Arkane Studios, c/o 
+If you have questions concerning this license or the applicable additional terms, you may contact in writing Arkane Studios, c/o
 ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 ===========================================================================
 */
+//////////////////////////////////////////////////////////////////////////////////////
+//   @@        @@@        @@@                @@                           @@@@@     //
+//   @@@       @@@@@@     @@@     @@        @@@@                         @@@  @@@   //
+//   @@@       @@@@@@@    @@@    @@@@       @@@@      @@                @@@@        //
+//   @@@       @@  @@@@   @@@  @@@@@       @@@@@@     @@@               @@@         //
+//  @@@@@      @@  @@@@   @@@ @@@@@        @@@@@@@    @@@            @  @@@         //
+//  @@@@@      @@  @@@@  @@@@@@@@         @@@@ @@@    @@@@@         @@ @@@@@@@      //
+//  @@ @@@     @@  @@@@  @@@@@@@          @@@  @@@    @@@@@@        @@ @@@@         //
+// @@@ @@@    @@@ @@@@   @@@@@            @@@@@@@@@   @@@@@@@      @@@ @@@@         //
+// @@@ @@@@   @@@@@@@    @@@@@@           @@@  @@@@   @@@ @@@      @@@ @@@@         //
+// @@@@@@@@   @@@@@      @@@@@@@@@@      @@@    @@@   @@@  @@@    @@@  @@@@@        //
+// @@@  @@@@  @@@@       @@@  @@@@@@@    @@@    @@@   @@@@  @@@  @@@@  @@@@@        //
+//@@@   @@@@  @@@@@      @@@      @@@@@@ @@     @@@   @@@@   @@@@@@@    @@@@@ @@@@@ //
+//@@@   @@@@@ @@@@@     @@@@        @@@  @@      @@   @@@@   @@@@@@@    @@@@@@@@@   //
+//@@@    @@@@ @@@@@@@   @@@@             @@      @@   @@@@    @@@@@      @@@@@      //
+//@@@    @@@@ @@@@@@@   @@@@             @@      @@   @@@@    @@@@@       @@        //
+//@@@    @@@  @@@ @@@@@                          @@            @@@                  //
+//            @@@ @@@                           @@             @@        STUDIOS    //
+//////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
+// ARX_C_cinematique.CPP - Cinematic/Cutscene Playback System
+//////////////////////////////////////////////////////////////////////////////////////
+//
+// Description:
+//		Keyframe-based cinematics and cutscene playback system for Arx Fatalis
+//		Handles camera animations, image/bitmap sequences, special effects
+//		Used for intro sequences, credits, story cutscenes, and scripted events
+//
+// Purpose:
+//		- Play pre-scripted cinematic sequences
+//		- Animate camera positions with keyframe interpolation
+//		- Display textured grid meshes (C_GRILLE) with effects
+//		- Apply visual effects (fade, blur, flash, dream)
+//		- Synchronize sound playback with visuals
+//		- Manage cinematic lighting and color grading
+//
+// Key Responsibilities:
+//		- Keyframe animation timeline management
+//		- Camera path interpolation (linear, bezier)
+//		- Bitmap/texture rendering with grid meshes
+//		- Special effects processing and blending
+//		- Dynamic lighting calculations
+//		- Sound synchronization at keyframes
+//		- Render state management for cinematics
+//
+// CINEMATIQUE Class:
+//		Main cinematic playback engine that manages the entire cutscene
+//
+//		Constructor(device, width, height):
+//			- Initializes D3D device reference
+//			- Sets render resolution
+//			- Resets all playback state
+//			- Sets default interpolation mode
+//
+//		OneTimeSceneReInit():
+//			- Resets camera to default position/orientation
+//			- Clears all bitmaps and sounds
+//			- Reinitializes track/timeline
+//			- Prepares for new cinematic
+//
+//		New():
+//			- Creates new cinematic project
+//			- Allocates timeline with default keyframes
+//			- Initializes undo system
+//			- Sets up sound/bitmap managers
+//
+//		InitDeviceObjects():
+//			- Configures D3D render states for cinematics
+//			- Disables Z-buffer (2D rendering)
+//			- Sets up texture filtering (anisotropic if available)
+//			- Enables alpha blending
+//			- Disables fog
+//
+//		DeleteDeviceObjects():
+//			- Restores D3D render states to game defaults
+//			- Re-enables Z-buffer
+//			- Resets texture addressing/filtering
+//			- Cleans up cinematic-specific settings
+//
+//		Render(FDIFF):
+//			- Main render loop for cinematic playback
+//			- Updates animation track
+//			- Renders current/transitioning bitmaps
+//			- Applies special effects
+//			- Plays synchronized sounds
+//			- Manages keyframe transitions
+//
+// Keyframe System:
+//		C_KEY structure stores animation data:
+//			- frame: Timeline position (frame number)
+//			- pos: Camera position (x, y, z)
+//			- angz: Camera rotation angle
+//			- numbitmap: Which bitmap to display
+//			- fx: Special effects flags
+//			- typeinterp: Interpolation mode (NO/LINEAR/BEZIER)
+//			- color/colord/colorf: Color tinting
+//			- speed: Effect speed multiplier
+//			- idsound[]: Sound IDs to play (multi-language)
+//			- light: Dynamic lighting parameters
+//			- posgrille/angzgrille: Grid mesh positioning
+//			- speedtrack: Playback speed
+//			- force: Transition forcing flag
+//
+//		FillKeyTemp():
+//			- Populates temporary keyframe structure
+//			- Prepares data for insertion into timeline
+//
+// Interpolation Modes:
+//		INTERP_NO:
+//			- No interpolation, instant jump
+//			- Used for hard cuts
+//
+//		INTERP_LINEAR:
+//			- Linear interpolation between keyframes
+//			- Constant velocity movement
+//
+//		INTERP_BEZIER:
+//			- Smooth bezier curve interpolation
+//			- Natural acceleration/deceleration
+//			- Default interpolation mode
+//
+// Camera System:
+//		EERIE_CAMERA Camera:
+//			- Cinematic camera with full control
+//			- Position (pos.x, pos.y, pos.z)
+//			- Rotation (angle.a, angle.b, angle.g)
+//			- Focal length (default 350.0)
+//			- Clip planes (near/far)
+//			- Viewport configuration
+//
+//		Camera Animation:
+//			- Keyframes define camera positions
+//			- Interpolated between keyframes
+//			- Synchronized with bitmap changes
+//			- Supports rotation (angz parameter)
+//
+// Special Effects (fx parameter):
+//		Lower Byte (0x000000FF) - Primary Effects:
+//			FX_FADEIN:  Fade from color to image
+//			FX_FADEOUT: Fade from image to color
+//			FX_BLUR:    Motion blur effect
+//
+//		Mid Byte (0x0000FF00) - Secondary Effects:
+//			FX_DREAM:   Dreamy wave distortion effect
+//
+//		Upper Byte (0x00FF0000) - Post Effects:
+//			FX_FLASH:   Flash to white/color
+//			FX_APPEAR:  Special wipe/reveal transition
+//			FX_APPEAR2: Reverse wipe transition
+//
+//		Effects can be combined using bitwise OR
+//		Persistent effects (FlashBlancEnCours, SpecialFadeEnCours)
+//		continue across keyframes until complete
+//
+// Grid Mesh Rendering:
+//		C_GRILLE Structure:
+//			- vertexs[]: Vertex positions
+//			- nbvertexs: Vertex count
+//			- mats[]: Material/texture assignments
+//			- nbmat: Material count
+//			- inds[]: Triangle indices
+//			- uvs[]: UV texture coordinates
+//
+//		DrawGrille():
+//			- Renders textured grid mesh
+//			- Transforms vertices (position + rotation)
+//			- Applies lighting per vertex
+//			- Handles dream effect distortion
+//			- Screen space coordinate adjustment
+//			- Indexed triangle rendering
+//
+//		TransformLocalVertex():
+//			- 2D rotation transformation
+//			- Translation by LocalPos
+//			- Uses cached sin/cos (LocalSin, LocalCos)
+//
+// Lighting System:
+//		C_LIGHT structure:
+//			- pos: Light position (screen space)
+//			- r, g, b: Color components (0-255)
+//			- fallin: Inner radius (full intensity)
+//			- fallout: Outer radius (zero intensity)
+//			- intensite: Base intensity (0-1)
+//			- intensiternd: Random intensity variation
+//
+//		CalculLight():
+//			- Distance-based falloff calculation
+//			- Linear interpolation between fallin/fallout
+//			- Adds light color to base vertex color
+//			- Clamps to valid color range (0-255)
+//			- Preserves alpha channel
+//
+//		LightRND:
+//			- Global randomized intensity multiplier
+//			- Smoothly interpolated for flickering
+//			- Applied to all light calculations
+//
+// Bitmap/Image Management:
+//		C_BITMAP TabBitmap[]:
+//			- Array of loaded bitmaps for cinematic
+//			- Contains texture data and grid mesh
+//			- Indexed by numbitmap
+//
+//		numbitmap:
+//			- Current bitmap being displayed
+//			- -1 = no bitmap (black screen)
+//
+//		numbitmapsuiv:
+//			- Next bitmap for transitions
+//			- Used during keyframe interpolation
+//
+//		Transition Rendering:
+//			- Renders current bitmap with alpha
+//			- Renders next bitmap with inverse alpha
+//			- Smooth crossfade between images
+//
+// Sound Integration:
+//		C_SOUND TabSound[MAX_SOUND]:
+//			- Array of loaded sound effects
+//
+//		idsound:
+//			- Sound ID to play at current keyframe
+//			- -1 = no sound
+//
+//		LSoundChoose:
+//			- Language selection for sound (upper byte)
+//			- Default: C_LANGUAGE_ENGLISH << 8
+//
+//		PlaySoundKeyFramer():
+//			- Triggered when changekey is TRUE
+//			- Plays sound synchronized with keyframe
+//
+// Track/Timeline Management:
+//		GereTrack():
+//			- Updates current frame position
+//			- Handles interpolation between keyframes
+//			- Sets current state variables
+//			- Detects keyframe changes (changekey)
+//
+//		AllocTrack():
+//			- Allocates timeline with frame range
+//
+//		DeleteTrack():
+//			- Frees timeline memory
+//
+//		AddKey()/AddDiffKey():
+//			- Inserts keyframes into timeline
+//
+// Render State Management:
+//		InitDeviceObjects() sets cinematic states:
+//			- Z-buffer disabled (2D rendering)
+//			- Alpha blending enabled
+//			- Texture perspective correction
+//			- Anisotropic filtering (if supported)
+//			- Texture clamping (D3DTADDRESS_CLAMP)
+//			- No culling (D3DCULL_NONE)
+//			- Lighting disabled
+//
+//		DeleteDeviceObjects() restores game states:
+//			- Z-buffer enabled
+//			- Backface culling (D3DCULL_CCW)
+//			- Texture wrapping (D3DTADDRESS_WRAP)
+//			- Fog enabled
+//
+// Screen Coordinate Adjustment:
+//		ADJUSTX(a), ADJUSTY(a) macros:
+//			- Convert from cinematic space to render space
+//			- Handles resolution differences
+//			- Centers coordinates around screen middle
+//			- Scales to 640x480 base resolution
+//
+//		LargeurRender, HauteurRender:
+//			- Current render resolution
+//			- Updated from DANAESIZX/DANAESIZY
+//
+// File Path Utilities:
+//		GetPathDirectory():
+//			- Extracts directory path from full path
+//			- Removes filename, keeps trailing backslash
+//
+//		ClearDirectory():
+//			- Extracts filename from full path
+//			- Stores in FileNameChoose
+//
+//		ClearAbsDirectory():
+//			- Removes absolute path prefix
+//			- Converts to relative path
+//
+//		AddDirectory():
+//			- Prepends directory to path
+//
+//		DirectoryAbs:
+//			- Absolute working directory
+//			- Set from Project.workingdir
+//
+// Global State Variables:
+//		InRender:
+//			- TRUE during Render() execution
+//			- Prevents reentrant rendering
+//
+//		ProjectModif:
+//			- Tracks if cinematic has been modified
+//			- Used for save prompts
+//
+//		InsertKey:
+//			- Flag to insert keyframe on next render
+//			- Set by user input or script
+//
+//		KeyCopy:
+//			- Clipboard for keyframe copy/paste
+//
+//		changekey:
+//			- TRUE when moving to new keyframe
+//			- Triggers sound playback
+//			- Resets effect timers
+//
+// Editor Features:
+//		EditLight:
+//			- Enable light editing mode
+//			- Visual feedback for light positioning
+//
+//		DrawLine:
+//			- Wireframe overlay for grid meshes
+//			- Debug visualization
+//
+//		ShiftKey, AltKey:
+//			- Modifier key states for editor
+//
+//		KeyTemp:
+//			- Temporary keyframe for editing
+//
+// Effect Persistence:
+//		FlashBlancEnCours:
+//			- TRUE when flash effect is active
+//			- Effect continues across keyframes
+//			- OldSpeedFlashBlanc: Saved speed
+//			- OldColorFlashBlanc: Saved color
+//
+//		SpecialFadeEnCours:
+//			- TRUE when special fade is active
+//			- Continues APPEAR/APPEAR2 effects
+//			- OldSpeedSpecialFade: Saved speed
+//			- OldFxSpecialFade: Saved effect type
+//
+// Performance Considerations:
+//		- All vertices transformed in one batch
+//		- Pre-allocated AllD3DTLVertex[40000] buffer
+//		- Cached sin/cos for vertex transforms
+//		- Indexed primitive rendering
+//		- Minimal state changes per frame
+//		- Effect precalculation (FX_DreamPrecalc)
+//
+// Frame Rate Management:
+//		CalcFPS():
+//			- Calculates current frame rate
+//			- Used for effect timing
+//
+//		FDIFF parameter:
+//			- Frame time delta
+//			- Passed to effect updates
+//			- Ensures smooth playback at any FPS
+//
+//		GetTrackFPS():
+//			- Target playback frame rate
+//			- Defined in cinematic data
+//
+// Undo System:
+//		InitUndo():
+//			- Initializes undo stack
+//
+//		UndoPile:
+//			- Current undo stack depth
+//
+// Use Cases:
+//		- Game intro sequence
+//		- Ending credits
+//		- Story cutscenes between levels
+//		- Character dialogue scenes
+//		- Dream/vision sequences
+//		- Tutorial demonstrations
+//		- Special event cinematics
+//
+// Technical Notes:
+//		- Fixed-function D3D7 pipeline
+//		- No vertex/pixel shaders
+//		- Software vertex transformation
+//		- Screen-space 2D rendering
+//		- Pre-authored grid meshes
+//		- Timeline-based animation
+//		- Multi-language sound support
+//
+// Dependencies:
+//		- danae.h (application framework)
+//		- arx_c_cinematique.h (class declarations)
+//		- EERIEUtil.h (math utilities)
+//		- D3D7 (Direct3D 7 rendering)
+//		- Sound system (C_SOUND)
+//		- Bitmap system (C_BITMAP)
+//
+// Code: Cyril Meynier
+//
+// Copyright (c) 1999-2010 ARKANE Studios SA. All rights reserved
+//////////////////////////////////////////////////////////////////////////////////////
 #include <stdlib.h>
 #include "danae.h"
 #include "arx_c_cinematique.h"

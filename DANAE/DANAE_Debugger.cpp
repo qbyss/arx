@@ -3,25 +3,373 @@
 ARX FATALIS GPL Source Code
 Copyright (C) 1999-2010 Arkane Studios SA, a ZeniMax Media company.
 
-This file is part of the Arx Fatalis GPL Source Code ('Arx Fatalis Source Code'). 
+This file is part of the Arx Fatalis GPL Source Code ('Arx Fatalis Source Code').
 
-Arx Fatalis Source Code is free software: you can redistribute it and/or modify it under the terms of the GNU General Public 
+Arx Fatalis Source Code is free software: you can redistribute it and/or modify it under the terms of the GNU General Public
 License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
 
-Arx Fatalis Source Code is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied 
+Arx Fatalis Source Code is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
 warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 
-You should have received a copy of the GNU General Public License along with Arx Fatalis Source Code.  If not, see 
+You should have received a copy of the GNU General Public License along with Arx Fatalis Source Code.  If not, see
 <http://www.gnu.org/licenses/>.
 
-In addition, the Arx Fatalis Source Code is also subject to certain additional terms. You should have received a copy of these 
-additional terms immediately following the terms and conditions of the GNU General Public License which accompanied the Arx 
+In addition, the Arx Fatalis Source Code is also subject to certain additional terms. You should have received a copy of these
+additional terms immediately following the terms and conditions of the GNU General Public License which accompanied the Arx
 Fatalis Source Code. If not, please request a copy in writing from Arkane Studios at the address below.
 
-If you have questions concerning this license or the applicable additional terms, you may contact in writing Arkane Studios, c/o 
+If you have questions concerning this license or the applicable additional terms, you may contact in writing Arkane Studios, c/o
 ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 ===========================================================================
 */
+//////////////////////////////////////////////////////////////////////////////////////
+//   @@        @@@        @@@                @@                           @@@@@     //
+//   @@@       @@@@@@     @@@     @@        @@@@                         @@@  @@@   //
+//   @@@       @@@@@@@    @@@    @@@@       @@@@      @@                @@@@        //
+//   @@@       @@  @@@@   @@@  @@@@@       @@@@@@     @@@               @@@         //
+//  @@@@@      @@  @@@@   @@@ @@@@@        @@@@@@@    @@@            @  @@@         //
+//  @@@@@      @@  @@@@  @@@@@@@@         @@@@ @@@    @@@@@         @@ @@@@@@@      //
+//  @@ @@@     @@  @@@@  @@@@@@@          @@@  @@@    @@@@@@        @@ @@@@         //
+// @@@ @@@    @@@ @@@@   @@@@@            @@@@@@@@@   @@@@@@@      @@@ @@@@         //
+// @@@ @@@@   @@@@@@@    @@@@@@           @@@  @@@@   @@@ @@@      @@@ @@@@         //
+// @@@@@@@@   @@@@@      @@@@@@@@@@      @@@    @@@   @@@  @@@    @@@  @@@@@        //
+// @@@  @@@@  @@@@       @@@  @@@@@@@    @@@    @@@   @@@@  @@@  @@@@  @@@@@        //
+//@@@   @@@@  @@@@@      @@@      @@@@@@ @@     @@@   @@@@   @@@@@@@    @@@@@ @@@@@ //
+//@@@   @@@@@ @@@@@     @@@@        @@@  @@      @@   @@@@   @@@@@@@    @@@@@@@@@   //
+//@@@    @@@@ @@@@@@@   @@@@             @@      @@   @@@@    @@@@@      @@@@@      //
+//@@@    @@@@ @@@@@@@   @@@@             @@      @@   @@@@    @@@@@       @@        //
+//@@@    @@@  @@@ @@@@@                          @@            @@@                  //
+//            @@@ @@@                           @@             @@        STUDIOS    //
+//////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
+// DANAE_Debugger.CPP - ARX Script Debugger Integration
+//////////////////////////////////////////////////////////////////////////////////////
+//
+// Description:
+//		Integration layer for external ARX script debugging DLL
+//		Provides real-time script state inspection during development
+//		Displays variables, behaviors, timers, and events for selected objects
+//
+// Purpose:
+//		- Load and communicate with ARX_SCRIPT_DEBUGGER.dll
+//		- Display current script execution state
+//		- Show global and local script variables
+//		- Monitor NPC AI behaviors
+//		- Track active script timers
+//		- Log script events
+//		- Allow pause/step execution
+//		- Enable runtime variable modification
+//
+// Key Responsibilities:
+//		- DLL loading and version validation
+//		- Function pointer initialization
+//		- Periodic debugger UI updates
+//		- Script variable serialization
+//		- NPC behavior state translation
+//		- Timer enumeration
+//		- Event log forwarding
+//		- Pause/step control integration
+//
+// Core Functions:
+//		DANAE_DEBUGGER_Launch(HWND hWnd):
+//			- Loads ARX_SCRIPT_DEBUGGER.dll
+//			- Validates DLL version (MAKELONG(1, 0))
+//			- Retrieves function pointers via GetProcAddress:
+//				* SCRIPT_DEBUGGER_GetVersion()
+//				* SCRIPT_DEBUGGER_CreateDialog()
+//				* SCRIPT_DEBUGGER_SetParams()
+//				* SCRIPT_DEBUGGER_WindowOpened()
+//				* SCRIPT_DEBUGGER_Destroy()
+//				* SCRIPT_DEBUGGER_GetParams()
+//			- Creates debugger window if DLL valid
+//			- Shows error if version mismatch
+//
+//		DANAE_DEBUGGER_Update():
+//			- Called every frame to update debugger UI
+//			- Checks if debugger window is open
+//			- Gets currently selected interactive object
+//			- Sends object state to debugger:
+//				* Object name and ID
+//				* Position (x, y, z)
+//				* Target object and position
+//				* NPC behavior flags
+//				* Global script variables
+//				* Local object variables
+//				* Active script timers
+//				* Recent script events
+//			- Processes debugger commands:
+//				* Pause/unpause execution
+//				* Step single frame
+//				* Modify global variables
+//				* Modify local variables
+//
+// DLL Function Pointers:
+//		DD_GetVersion:
+//			- Type: DD_GETVERSION
+//			- Returns DLL version as DWORD
+//			- Must match MAKELONG(1, 0)
+//
+//		DD_DebugDialog:
+//			- Type: CREATEDIALOG
+//			- Creates debugger window
+//			- Params: HWND parent, ScriptDebuggerInfos
+//
+//		DD_SetParams:
+//			- Type: SETPARAMS
+//			- Sends updated data to debugger
+//			- Params: ScriptDebuggerInfos struct
+//
+//		DD_Exists:
+//			- Type: DD_EXISTS
+//			- Returns TRUE if debugger window open
+//			- Called before each update
+//
+//		DD_Kill:
+//			- Type: DD_KILL
+//			- Destroys debugger window
+//			- Cleanup on shutdown
+//
+//		DD_GetParams:
+//			- Type: DD_GETPARAMS
+//			- Retrieves user commands from debugger
+//			- Params: ScriptDebuggerUpdate struct
+//
+// Data Structures:
+//		ScriptDebuggerInfos:
+//			- Data sent to debugger window
+//			- lpszObjName: Object identifier
+//			- p3ObjPos[3]: Object position strings
+//			- lpszTargetName: Target object name
+//			- p3TargetPos[3]: Target position strings
+//			- iNbGlobals: Count of global variables
+//			- pGlobalVars: Array of Vars (global)
+//			- iNbLocals: Count of local variables
+//			- pLocalVars: Array of Vars (local)
+//			- lpszBehavior: NPC behavior string
+//			- bEvents: Event log enabled flag
+//			- lpszEvents: Event log text
+//			- bTimers: Timer display enabled
+//			- lpszTimers: Timer list text
+//			- bClear: Clear debugger flag
+//
+//		ScriptDebuggerUpdate:
+//			- Commands from debugger to engine
+//			- bPause: Toggle pause state
+//			- bStep: Step one frame
+//			- bVariables: Request variable update
+//			- bEvents: Request event log
+//			- bTimers: Request timer list
+//			- bUpdateGlobalVar: Modify global var
+//			- globalVar: Variable name/value
+//			- bUpdateLocalVar: Modify local var
+//			- localVar: Variable name/value
+//
+//		Vars:
+//			- Single variable entry
+//			- lpszVarName: Variable name string
+//			- lpszVarValue: Variable value string
+//
+// Object Selection:
+//		LastSelectedIONum:
+//			- Index of selected interactive object
+//			- Updated by editor selection
+//
+//		IO_DEBUG:
+//			- Pointer to debugged object
+//			- Set from LastSelectedIONum
+//
+//		lastio:
+//			- Previous frame's object
+//			- Detects selection change
+//			- Triggers NEED_DEBUGGER_CLEAR
+//
+// Variable Inspection:
+//		Global Variables:
+//			- Sourced from svar[] array
+//			- Count: NB_GLOBALS
+//			- Types: TYPE_G_TEXT, TYPE_G_LONG, TYPE_G_FLOAT
+//			- Displayed as name/value pairs
+//
+//		Local Variables:
+//			- Sourced from io->script.lvar[]
+//			- Count: io->script.nblvar
+//			- Types: TYPE_L_TEXT, TYPE_L_LONG, TYPE_L_FLOAT
+//			- Object-specific variables
+//
+//		Variable Modification:
+//			- ARX_SCRIPT_SetVar() for updates
+//			- Accepts string value (parsed by script system)
+//			- MODIFFF flag forces refresh
+//
+// NPC Behavior Display:
+//		Behavior Flags (io->_npcdata->behavior):
+//			BEHAVIOUR_MOVE_TO        - "MOVE_TO"
+//			BEHAVIOUR_GO_HOME        - "GO_HOME"
+//			BEHAVIOUR_FLEE           - "FLEE"
+//			BEHAVIOUR_LOOK_FOR       - "LOOK_FOR"
+//			BEHAVIOUR_HIDE           - "HIDE"
+//			BEHAVIOUR_WANDER_AROUND  - "WANDER_AROUND"
+//			BEHAVIOUR_GUARD          - "GUARD"
+//			BEHAVIOUR_FRIENDLY       - "FRIENDLY"
+//
+//		Behavior Modifiers (appended):
+//			BEHAVIOUR_LOOK_AROUND    - " Look_Around"
+//			BEHAVIOUR_SNEAK          - " Sneak"
+//			BEHAVIOUR_DISTANT        - " Distant"
+//			BEHAVIOUR_FIGHT          - " Fight"
+//			BEHAVIOUR_MAGIC          - " Magic"
+//
+//		Non-NPC objects:
+//			- Display "Not an NPC..."
+//
+// Script Timer Display:
+//		scr_timer[] array:
+//			- MAX_TIMER_SCRIPT entries
+//			- Filtered by scr_timer[i].io == io
+//			- Format: "name count msecs\r\n"
+//			- Example: "MyTimer 5 1000ms"
+//
+//		Timer fields:
+//			- name: Timer identifier
+//			- times: Remaining repeat count
+//			- msecs: Milliseconds until next trigger
+//
+// Event Logging:
+//		BIG_DEBUG_STRING:
+//			- Global buffer for event messages
+//			- Accumulated during script execution
+//
+//		BIG_DEBUG_POS:
+//			- Current position in buffer
+//			- Reset after sending to debugger
+//
+//		Event display:
+//			- Scrolling text log
+//			- Shows script event calls
+//			- Cleared after read
+//
+// Pause/Step Control:
+//		su.bPause:
+//			- Toggle ARX_TIME_Pause()/UnPause()
+//			- Freezes game time
+//			- Allows script inspection
+//
+//		su.bStep:
+//			- Advances time by 100ms
+//			- Single-step script execution
+//			- Only works when paused
+//			- Sets MODIFFF to force update
+//
+//		ARXPausedTimer:
+//			- Global pause state flag
+//			- Checked before updates
+//
+//		ARXTotalPausedTime:
+//			- Accumulated paused time
+//			- Decremented for step
+//
+// UI Update Optimization:
+//		MODIFFF flag:
+//			- Forces full update
+//			- Set on object change
+//			- Set on step execution
+//			- Set on variable modification
+//			- Skips update if paused and !MODIFFF
+//
+//		NEED_DEBUGGER_CLEAR:
+//			- Triggers UI clear on next update
+//			- Set when object selection changes
+//			- Sent as bClear flag
+//
+// Memory Management:
+//		String Allocation:
+//			- All strings strdup()'d for debugger
+//			- Freed after DD_SetParams() call
+//			- Prevents dangling pointers
+//
+//		Variable Arrays:
+//			- new Vars[] for global/local
+//			- delete[] after sending
+//			- Each entry's strings also freed
+//
+//		Event/Timer Buffers:
+//			- malloc() for event log
+//			- strdup() for timer list
+//			- Freed after use
+//
+// Target Object Display:
+//		io->targetinfo:
+//			- Index of targeted object
+//			- -2 means self-target
+//			- Shows target name and position
+//
+//		Target display:
+//			- Same format as object (name + pos)
+//			- "None" if no target
+//			- Used for AI debugging
+//
+// Error Handling:
+//		Version Check:
+//			- goto invalid on version mismatch
+//			- Shows popup error message
+//			- Prevents incompatible DLL use
+//
+//		Function Pointer Validation:
+//			- goto invalid if GetProcAddress fails
+//			- All functions must exist
+//			- Ensures complete interface
+//
+//		No Object Selected:
+//			- Shows "No Object Selected"
+//			- Clears debugger display
+//			- goto suite to skip processing
+//
+// Use Cases:
+//		- Debugging AI behavior scripts
+//		- Inspecting script variable values
+//		- Stepping through script execution
+//		- Monitoring script events
+//		- Tracking script timers
+//		- Modifying variables at runtime
+//		- Understanding NPC state machines
+//
+// Workflow:
+//		1. Launch debugger via menu/hotkey
+//		2. DANAE_DEBUGGER_Launch() loads DLL
+//		3. Select object in editor
+//		4. DANAE_DEBUGGER_Update() called each frame
+//		5. Debugger displays object state
+//		6. User can pause, step, modify variables
+//		7. Changes applied via ARX_SCRIPT_SetVar()
+//
+// Technical Notes:
+//		- DLL must be in working directory
+//		- Version must match exactly
+//		- Single object debugged at a time
+//		- Real-time updates while running
+//		- Pause halts entire game
+//		- Step advances by fixed time
+//
+// Limitations:
+//		- External DLL dependency
+//		- Single object at a time
+//		- No breakpoint support
+//		- No script source display
+//		- Global pause (not per-object)
+//		- Fixed step increment (100ms)
+//		- Windows-only (Win32 DLL)
+//
+// Dependencies:
+//		- ARX_SCRIPT_DEBUGGER.dll (external)
+//		- SCRIPT_DEBUGGER_Dialog.h (interface)
+//		- arx_interactive.h (INTERACTIVE_OBJ)
+//		- arx_time.h (pause/unpause)
+//		- windows.h (LoadLibrary, GetProcAddress)
+//
+// Code: Cyril Meynier
+//
+// Copyright (c) 1999-2010 ARKANE Studios SA. All rights reserved
+//////////////////////////////////////////////////////////////////////////////////////
 
 #include <stdio.h>
 #include <conio.h>

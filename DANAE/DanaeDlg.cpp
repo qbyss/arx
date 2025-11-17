@@ -42,17 +42,334 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //            @@@ @@@                           @@             @@        STUDIOS    //
 //////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////
-// DanaeDlg.CPP
+// DanaeDlg.CPP - DANAE Editor Dialog System
 //////////////////////////////////////////////////////////////////////////////////////
 //
 // Description:
-//		DANAE Dialog Box Management
+//		Windows dialog box management and UI infrastructure for DANAE level editor
+//		Provides interactive object browser, lighting controls, debug tools
+//		Editor-only code - not used during gameplay
 //
-// Updates: (date) (person) (update)
+// Purpose:
+//		- Manage editor dialog windows and controls
+//		- Interactive object tree view browser
+//		- Lighting precalculation UI and threading
+//		- Snapshot/screenshot configuration
+//		- Debug option toggles and settings
+//		- Progress bar displays
+//		- Color picker dialogs
+//
+// Key Responsibilities:
+//		- Dialog procedure callbacks for Windows UI
+//		- TreeView control management for object hierarchy
+//		- Checkbox/button state manipulation
+//		- Multi-threaded lighting precalculation
+//		- Snapshot memory management
+//		- Window title updates
+//		- Text display dialogs
+//		- Progress tracking UI
+//
+// Dialog Procedures:
+//		Various *DlgProc() functions:
+//			- Handle WM_INITDIALOG initialization
+//			- Process WM_COMMAND for button clicks
+//			- Update controls from global state
+//			- Save settings back to globals
+//			- Standard Windows message pump callbacks
+//
+// Control Utilities:
+//		SetCheck(HWND hWnd, int id, long chk):
+//			- Sets checkbox state (CHECK or UNCHECK)
+//			- Sends BM_SETCHECK message
+//			- Updates UI to match program state
+//
+//		IsChecked(HWND hWnd, int id):
+//			- Queries checkbox state
+//			- Returns BOOL (TRUE if checked)
+//			- Sends BM_GETCHECK message
+//
+//		SetClick(HWND hWnd, int id):
+//			- Programmatically clicks button
+//			- Triggers button's action handler
+//			- Uses SendMessage(BM_CLICK)
+//
+//		SetWindowTitle(HWND hWnd, char* tex):
+//			- Updates window title bar text
+//			- Used for status updates
+//			- Shows current editor state
+//
+// Interactive Object Tree View:
+//		FillInterTreeView(HWND tvhwnd):
+//			- Populates TreeView with all interactive objects
+//			- Organizes by type/category
+//			- Shows object names and counts
+//			- Creates hierarchical structure
+//
+//		AddIOTVItem(HWND tvhwnd, INTERACTIVE_OBJ* io, char* name, long type):
+//			- Adds single object to tree
+//			- Creates tree node with icon
+//			- Stores object pointer in lParam
+//			- Updates category counts
+//
+//		RemoveIOTVItem(HWND tvhwnd, INTERACTIVE_OBJ* io, char* name, long type):
+//			- Removes object from tree
+//			- Updates category counts
+//			- Frees tree node memory
+//
+//		InterTreeViewItemAdd(INTERACTIVE_OBJ* io, char* name, long type):
+//			- High-level wrapper for AddIOTVItem
+//			- Uses global tree view window handle
+//
+//		InterTreeViewItemRemove(INTERACTIVE_OBJ* io, char* name, long type):
+//			- High-level wrapper for RemoveIOTVItem
+//			- Uses global tree view window handle
+//
+//		InterTreeViewDisplayInfo(HTREEITEM hitem):
+//			- Shows object properties in UI
+//			- Displays position, rotation, flags
+//			- Updates info panel controls
+//
+//		InterTreeSelectObject(HTREEITEM hitem):
+//			- Selects object in 3D view
+//			- Centers camera on object
+//			- Highlights in editor
+//
+//		InterTreeViewGotoPosition(HTREEITEM hitem):
+//			- Moves editor camera to object
+//			- Navigates 3D viewport
+//			- Aids in level navigation
+//
+//		LaunchInteractiveObjectsApp(HWND hwnd):
+//			- Opens interactive object browser window
+//			- Modal dialog for object management
+//			- Launches TreeView dialog
+//
+//		KillInterTreeView():
+//			- Closes object browser
+//			- Frees tree resources
+//			- Destroys dialog window
+//
+// Lighting System UI:
+//		LaunchLightThread(long minx, long minz, long maxx, long maxz):
+//			- Starts background lighting precalculation
+//			- Creates worker thread (CreateThread)
+//			- Shows progress dialog
+//			- Bounds: minx/minz to maxx/maxz grid region
+//
+//		KillLightThread():
+//			- Stops lighting calculation
+//			- Terminates worker thread
+//			- Closes progress window
+//			- Cleans up thread handles
+//
+//		LightApply(HWND hWnd):
+//			- Applies lighting settings from dialog
+//			- Updates global light parameters
+//			- Triggers relighting if needed
+//			- Saves settings to config
+//
+//		launchlightdialog():
+//			- Opens lighting configuration dialog
+//			- Shows ambient, dynamic light settings
+//			- Allows precalc triggering
+//
+//		PAUSED_PRECALC:
+//			- Global flag for pausing calculation
+//			- Checked by worker thread
+//			- Resume/pause toggle
+//
+//		PROGRESS_COUNT / PROGRESS_TOTAL:
+//			- Track lighting progress
+//			- Updated by worker thread
+//			- Displayed in progress bar
+//
+//		LIGHTTHREAD handle:
+//			- Worker thread handle
+//			- Monitored for completion
+//			- Terminated on cancel
+//
+// Snapshot/Screenshot System:
+//		LaunchSnapShotParamApp(HWND hwnd):
+//			- Opens snapshot configuration dialog
+//			- Settings for screenshot capture
+//			- Resolution, format options
+//
+//		SnapShotDlgProc():
+//			- Dialog procedure for snapshot window
+//			- Handles snapshot parameter UI
+//			- Triggers captures
+//
+//		InitMemorySnaps():
+//			- Allocates memory for snapshot buffer
+//			- Prepares for multi-capture
+//			- Returns buffer ID
+//
+//		FlushMemorySnaps(long snap):
+//			- Saves buffered snapshots to disk
+//			- Frees snapshot memory
+//			- Generates filenames
+//
+//		SnapShotMode:
+//			- Current snapshot capture mode
+//			- 0=off, 1=single, 2=sequence
+//
+//		CURRENTSNAPNUM:
+//			- Current snapshot number
+//			- Incremented for sequences
+//			- Used in filename generation
+//
+// Text Display:
+//		TextBox(char* title, char* text, long size):
+//			- Shows modal text display dialog
+//			- Scrollable text area
+//			- Size parameter for buffer
+//			- Used for logs, help text
+//
+//		GTE_TITLE, GTE_TEXT, GTE_SIZE:
+//			- Global text editor parameters
+//			- Passed to TextBox dialog
+//			- Title, content, max size
+//
+// Debug Option Toggles:
+//		Global flags controlled by checkboxes:
+//			USE_D3DFOG          - Enable D3D fog
+//			ARX_DEMO            - Demo mode
+//			NOCHECKSUM          - Skip file validation
+//			ZMAPMODE            - Z-buffer visualization
+//			TreatAllIO          - Force all IO processing
+//			HIDEMAGICDUST       - Hide particle effects
+//			LaunchDemo          - Auto-launch demo
+//			LIGHTPOWERUP        - Boost light intensity
+//			D3DTRANSFORM        - Use D3D transforms
+//			USE_PLAYERCOLLISIONS - Enable player collision
+//			A_FLARES            - Show lens flares
+//			NODIRCREATION       - Disable directory creation
+//			MAPUPDATE           - Auto-update minimap
+//			EXTERNALVIEWING     - External camera mode
+//			DYNAMIC_NORMALS     - Recalculate normals
+//			SHOWSHADOWS         - Display shadows
+//			HIPOLY              - High polygon mode
+//			BLURTEXTURES        - Texture blur filter
+//			NOMIPMAPS           - Disable mipmapping
+//			POINTINTERPOLATION  - Point sampling
+//			ForceIODraw         - Force object rendering
+//			NEED_ANCHORS        - Show anchor points
+//			HIDEANCHORS         - Hide anchor visualization
+//			ALLOW_MESH_TWEAKING - Enable mesh editing
+//			DEBUG_MOLLESS       - Molless debug mode
+//			HIDESPEECH          - Hide speech bubbles
+//
+// Window Handles:
+//		MESH_REDUCTION_WINDOW:
+//			- Handle to mesh optimization dialog
+//			- Shows polygon reduction progress
+//
+//		PRECALC:
+//			- Handle to precalc progress window
+//			- Displays lighting calculation status
+//
+// Color Picker:
+//		custcr[16]:
+//			- Custom color palette
+//			- Saved user colors
+//			- Used with ChooseColor dialog
+//
+//		accepted:
+//			- Flag for color dialog acceptance
+//			- Non-zero if user clicked OK
+//
+// Editor Exit:
+//		ExitProc():
+//			- Cleanup before editor shutdown
+//			- Saves settings
+//			- Frees resources
+//			- Terminates threads
+//
+// Conditional Compilation:
+//		_ARX_CEDITOR_:
+//			- Editor-specific code flag
+//			- Set to 0 in this file (runtime mode)
+//			- When 1, includes Ceditor headers
+//
+// Integration Points:
+//		ARX_Interface.h:
+//			- UI element definitions
+//
+//		ARX_Snapshot.h:
+//			- Screenshot capture system
+//
+//		EERIELight.h:
+//			- Lighting system interface
+//
+//		ARX_Paths.h:
+//			- Pathfinding visualization
+//
+//		ARX_Sound.h:
+//			- Audio settings dialogs
+//
+// Windows API Usage:
+//		Dialog functions:
+//			- DialogBox() - Modal dialogs
+//			- GetDlgItem() - Control access
+//			- SendMessage() - Control manipulation
+//			- SetWindowText() - Text updates
+//
+//		TreeView functions:
+//			- TreeView_InsertItem() - Add nodes
+//			- TreeView_DeleteItem() - Remove nodes
+//			- TreeView_GetSelection() - Query selection
+//
+//		Threading:
+//			- CreateThread() - Worker threads
+//			- TerminateThread() - Force stop
+//			- WaitForSingleObject() - Sync
+//
+// Memory Management:
+//		Snapshot buffers:
+//			- Dynamically allocated
+//			- Freed after save
+//			- Size based on resolution
+//
+//		Tree view nodes:
+//			- Allocated per object
+//			- Freed on removal
+//			- LPARAM stores INTERACTIVE_OBJ*
+//
+// Use Cases:
+//		- Browsing level objects in hierarchy
+//		- Selecting/navigating to objects
+//		- Precalculating static lighting
+//		- Capturing development screenshots
+//		- Toggling debug visualization
+//		- Configuring editor settings
+//		- Viewing lighting progress
+//		- Displaying help text
+//
+// Technical Notes:
+//		- Win32 dialog-based UI
+//		- Modal and modeless windows
+//		- Message pump architecture
+//		- Thread-safe progress updates
+//		- Global state synchronization
+//		- Editor-only (not in shipped game)
+//
+// Limitations:
+//		- Single-threaded UI
+//		- Windows-specific (Win32 API)
+//		- No undo/redo for settings
+//		- Limited error feedback
+//		- Blocks on modal dialogs
+//
+// Dependencies:
+//		- windows.h (Win32 API)
+//		- Danae_Resource.h (dialog resource IDs)
+//		- DanaeDlg.h (dialog declarations)
+//		- ARX subsystem headers
+//		- EERIE subsystem headers
 //
 // Code: Cyril Meynier
 //
-// Copyright (c) 1999-2000 ARKANE Studios SA. All rights reserved
+// Copyright (c) 1999-2010 ARKANE Studios SA. All rights reserved
 //////////////////////////////////////////////////////////////////////////////////////
 #define _ARX_CEDITOR_  0
 #include <DANAE_VERSION.h>
